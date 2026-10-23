@@ -1,0 +1,49 @@
+# A one-off, diagnose-only investigation run in-cluster with the reader role.
+# Alertmanager (or a person) can create this Job when an alert fires; the
+# incident report is written to the pod log. --approve no means the agent can
+# propose a fix but nothing is ever applied from here.
+#
+#   kubectl create secret generic kubesleuth-anthropic -n kubesleuth --from-literal=api-key=...
+#   kubectl apply -f deploy/rbac.yaml -f deploy/investigate-job.yaml
+#   kubectl logs -n kubesleuth job/kubesleuth-checkout-api -f
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kubesleuth-checkout-api
+  namespace: kubesleuth
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      serviceAccountName: kubesleuth
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: investigate
+          image: ghcr.io/sudhaseeli/kubesleuth:0.1.0
+          args:
+            - investigate
+            - --live
+            - --namespace=shop
+            - --target=deployment/checkout-api
+            - --alert-name=KubePodCrashLooping
+            - --summary=checkout-api pods are restarting repeatedly
+            - --brain=claude
+            - --approve=no
+          env:
+            - name: PROMETHEUS_URL
+              value: http://prometheus-operated.monitoring.svc:9090
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: {name: kubesleuth-anthropic, key: api-key}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}

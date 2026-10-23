@@ -1,0 +1,119 @@
+{
+  "id": "oom-kill",
+  "title": "checkout-api pods keep restarting during peak traffic",
+  "alert": {
+    "name": "KubePodCrashLooping",
+    "severity": "critical",
+    "namespace": "shop",
+    "target": "deployment/checkout-api",
+    "fired_at": "2026-10-21T14:06:00Z",
+    "summary": "Pods of deployment shop/checkout-api restarted 21 times in the last 30 minutes."
+  },
+  "pods": [
+    {
+      "name": "checkout-api-7d9f8b6c5-2xkqp", "namespace": "shop", "owner": "deployment/checkout-api",
+      "phase": "Running", "ready": "1/1", "restarts": 7, "node": "ip-10-0-1-12",
+      "containers": [{
+        "name": "checkout-api", "image": "registry.example.com/checkout-api:4.18.0",
+        "state": {"running": {"started_at": "2026-10-21T14:04:51Z"}},
+        "last_state": {"terminated": {"reason": "OOMKilled", "exit_code": 137, "finished_at": "2026-10-21T14:04:40Z"}},
+        "resources": {"requests": {"cpu": "250m", "memory": "192Mi"}, "limits": {"cpu": "1", "memory": "256Mi"}},
+        "readiness_probe": {"http_get": "/healthz", "period_seconds": 10}
+      }],
+      "conditions": {"Ready": "True", "ContainersReady": "True"}
+    },
+    {
+      "name": "checkout-api-7d9f8b6c5-8rmvd", "namespace": "shop", "owner": "deployment/checkout-api",
+      "phase": "Running", "ready": "0/1", "restarts": 8, "node": "ip-10-0-2-31",
+      "containers": [{
+        "name": "checkout-api", "image": "registry.example.com/checkout-api:4.18.0",
+        "state": {"waiting": {"reason": "CrashLoopBackOff", "message": "back-off 1m20s restarting failed container"}},
+        "last_state": {"terminated": {"reason": "OOMKilled", "exit_code": 137, "finished_at": "2026-10-21T14:05:58Z"}},
+        "resources": {"requests": {"cpu": "250m", "memory": "192Mi"}, "limits": {"cpu": "1", "memory": "256Mi"}},
+        "readiness_probe": {"http_get": "/healthz", "period_seconds": 10}
+      }],
+      "conditions": {"Ready": "False", "ContainersReady": "False"}
+    },
+    {
+      "name": "checkout-api-7d9f8b6c5-qw4ts", "namespace": "shop", "owner": "deployment/checkout-api",
+      "phase": "Running", "ready": "1/1", "restarts": 6, "node": "ip-10-0-1-12",
+      "containers": [{
+        "name": "checkout-api", "image": "registry.example.com/checkout-api:4.18.0",
+        "state": {"running": {"started_at": "2026-10-21T14:02:10Z"}},
+        "last_state": {"terminated": {"reason": "OOMKilled", "exit_code": 137, "finished_at": "2026-10-21T14:01:59Z"}},
+        "resources": {"requests": {"cpu": "250m", "memory": "192Mi"}, "limits": {"cpu": "1", "memory": "256Mi"}},
+        "readiness_probe": {"http_get": "/healthz", "period_seconds": 10}
+      }],
+      "conditions": {"Ready": "True", "ContainersReady": "True"}
+    },
+    {
+      "name": "cart-svc-5c8d7f9b4-lm2zx", "namespace": "shop", "owner": "deployment/cart-svc",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-2-31",
+      "containers": [{
+        "name": "cart-svc", "image": "registry.example.com/cart-svc:2.4.1",
+        "state": {"running": {"started_at": "2026-10-19T08:00:00Z"}},
+        "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"memory": "256Mi"}}
+      }],
+      "conditions": {"Ready": "True"}
+    }
+  ],
+  "logs": {
+    "checkout-api-7d9f8b6c5-8rmvd": {
+      "current": "",
+      "previous": "14:05:31 INFO  starting checkout-api 4.18.0 (PRICE_CACHE_MODE=full)\n14:05:32 INFO  connected to postgres primary\n14:05:33 INFO  preloading price cache: 48,210 SKUs\n14:05:41 INFO  price cache warm: 48,210 SKUs, ~171 MiB\n14:05:44 INFO  serving on :8080\n14:05:52 INFO  promo engine loaded 3,912 active promotions\n14:05:55 WARN  RSS 241 MiB (limit 256 MiB)\n14:05:57 WARN  RSS 252 MiB (limit 256 MiB)"
+    },
+    "checkout-api-7d9f8b6c5-2xkqp": {
+      "current": "14:04:52 INFO  starting checkout-api 4.18.0 (PRICE_CACHE_MODE=full)\n14:04:54 INFO  preloading price cache: 48,210 SKUs\n14:05:02 INFO  price cache warm: 48,210 SKUs, ~171 MiB\n14:05:05 INFO  serving on :8080\n14:05:59 WARN  RSS 238 MiB (limit 256 MiB)",
+      "previous": "14:03:58 INFO  serving on :8080\n14:04:31 WARN  RSS 249 MiB (limit 256 MiB)\n14:04:38 WARN  RSS 255 MiB (limit 256 MiB)"
+    },
+    "checkout-api-7d9f8b6c5-qw4ts": {
+      "current": "14:02:12 INFO  starting checkout-api 4.18.0 (PRICE_CACHE_MODE=full)\n14:02:23 INFO  serving on :8080",
+      "previous": "14:01:40 WARN  RSS 254 MiB (limit 256 MiB)"
+    }
+  },
+  "events": [
+    {"type": "Warning", "reason": "BackOff", "object": "pod/checkout-api-7d9f8b6c5-8rmvd", "message": "Back-off restarting failed container checkout-api", "count": 14, "last_seen": "2026-10-21T14:06:02Z"},
+    {"type": "Normal", "reason": "Killing", "object": "pod/checkout-api-7d9f8b6c5-2xkqp", "message": "Container checkout-api exceeded its memory limit and was OOM killed", "count": 7, "last_seen": "2026-10-21T14:04:40Z"},
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/checkout-api", "message": "Scaled up replica set checkout-api-7d9f8b6c5 to 3", "count": 1, "last_seen": "2026-10-21T13:12:00Z"},
+    {"type": "Normal", "reason": "Pulled", "object": "pod/cart-svc-5c8d7f9b4-lm2zx", "message": "Container image already present on machine", "count": 1, "last_seen": "2026-10-19T08:00:00Z"}
+  ],
+  "deployments": [
+    {
+      "name": "checkout-api", "namespace": "shop", "replicas": 3, "ready": 2, "updated": 3,
+      "image": "registry.example.com/checkout-api:4.18.0",
+      "containers": [{"name": "checkout-api", "limits": {"memory": "256Mi"}}],
+      "history": [
+        {"revision": 13, "image": "registry.example.com/checkout-api:4.17.2", "change_cause": "promo engine v3", "rolled_out_at": "2026-10-14T10:00:00Z"},
+        {"revision": 14, "image": "registry.example.com/checkout-api:4.18.0", "change_cause": "enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency", "rolled_out_at": "2026-10-21T13:12:00Z"}
+      ]
+    },
+    {"name": "cart-svc", "namespace": "shop", "replicas": 1, "ready": 1, "updated": 1, "image": "registry.example.com/cart-svc:2.4.1", "history": [{"revision": 6, "image": "registry.example.com/cart-svc:2.4.1", "change_cause": "dependency bumps", "rolled_out_at": "2026-10-19T08:00:00Z"}]}
+  ],
+  "metrics": {
+    "memory_working_set:checkout-api": {"unit": "MiB", "points": [["13:00", 118], ["13:10", 121], ["13:20", 214], ["13:30", 236], ["13:40", 251], ["13:50", 255], ["14:00", 254]]},
+    "memory_limit:checkout-api": {"unit": "MiB", "points": [["13:00", 256], ["14:00", 256]]},
+    "restarts:checkout-api": {"unit": "count", "points": [["13:00", 0], ["13:20", 2], ["13:30", 6], ["13:40", 11], ["13:50", 16], ["14:00", 21]]},
+    "cpu_usage:checkout-api": {"unit": "cores", "points": [["13:00", 0.31], ["13:30", 0.44], ["14:00", 0.47]]},
+    "http_5xx_rate:checkout-api": {"unit": "%", "points": [["13:00", 0.2], ["13:30", 3.9], ["14:00", 6.4]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-1-12", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi"}, "taints": []},
+    {"name": "ip-10-0-2-31", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [
+      {"action": "patch_memory_limit", "target": "checkout-api"},
+      {"action": "rollback_deployment", "target": "checkout-api"}
+    ],
+    "after": {
+      "summary": "No OOM kills in the 10 minutes after the change; all 3 replicas ready.",
+      "checks": ["restarts:checkout-api flat at 21 for 10m", "memory_working_set peaks at 262 MiB of 512 MiB", "http_5xx_rate back to 0.2%"]
+    },
+    "wrong_fix": "Pods are still OOMKilled roughly every 4 minutes; memory still hits the 256 MiB limit."
+  },
+  "ground_truth": {
+    "category": "OOMKilled",
+    "root_cause": "Revision 14 enabled the full price-cache preload (~171 MiB), pushing the working set past the 256 MiB memory limit.",
+    "action": "patch_memory_limit"
+  }
+}

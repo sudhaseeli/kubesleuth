@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kubesleuth"
+version = "0.1.0"
+description = "An agentic SRE that investigates Kubernetes incidents, finds the root cause and proposes a fix that waits for human approval."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sudha Rani Seeli" }]
+keywords = ["kubernetes", "sre", "agents", "llm", "claude", "mcp", "incident-response"]
+dependencies = []
+
+[project.optional-dependencies]
+claude = ["anthropic>=2.1"]
+mcp = ["mcp>=1.2"]
+live = ["kubernetes>=29"]
+dev = ["pytest>=8"]
+all = ["anthropic>=2.1", "mcp>=1.2", "kubernetes>=29", "pytest>=8"]
+
+[project.scripts]
+kubesleuth = "kubesleuth.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kubesleuth*"]
+
+[tool.setuptools.package-data]
+kubesleuth = ["scenarios/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

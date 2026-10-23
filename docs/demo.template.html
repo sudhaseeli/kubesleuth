@@ -1,0 +1,333 @@
+<title>KubeSleuth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive demo of KubeSleuth, an agentic SRE that investigates Kubernetes incidents and proposes fixes that wait for human approval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100;1,9..144,300..700,0..100&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one dark console page; cluster map on the left, the agent's live trace on the right, report below */
+:root{
+  --night:#120D17; --panel:#1B1421; --panel-2:#231a2b; --line:rgba(244,237,230,.11);
+  --pearl:#F4EDE6; --mist:#BCAFBC; --rose:#D9A3A0; --champagne:#E6CBA0; --mauve:#A588BA;
+  --ok:#9DB3A2; --warn:#E6CBA0; --bad:#E08E8A;
+  --f-display:"Fraunces","Iowan Old Style",Georgia,serif;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;background:var(--night);color:var(--pearl);font:400 15px/1.6 var(--f-body);
+  background-image:radial-gradient(60vmax 40vmax at 85% -10%,rgba(165,136,186,.18),transparent 60%),radial-gradient(50vmax 35vmax at -10% 110%,rgba(217,163,160,.12),transparent 60%);background-attachment:fixed}
+.wrap{max-width:1240px;margin-inline:auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+a{color:var(--champagne)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--champagne);outline-offset:3px;border-radius:6px}
+.mono{font-family:var(--f-mono)}
+.eyebrow{font:500 11px/1.4 var(--f-mono);text-transform:uppercase;letter-spacing:.14em;color:var(--champagne)}
+
+header.top .wrap{padding-block:40px 24px;display:grid;gap:14px}
+h1{margin:0;font:300 clamp(40px,6vw,72px)/.95 var(--f-display);letter-spacing:-.03em;font-variation-settings:"opsz" 144,"SOFT" 60}
+h1 em{font-style:italic;color:var(--rose)}
+.lede{max-width:70ch;color:var(--mist);font-size:16px;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.meta span{font:400 12px var(--f-mono);padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--pearl)}
+
+.tabs{display:flex;flex-wrap:wrap;gap:8px;padding-block:8px 20px}
+.tab{border:1px solid var(--line);background:rgba(244,237,230,.03);padding:9px 14px;border-radius:12px;cursor:pointer;text-align:left;display:grid;gap:2px;transition:border-color .3s,background .3s}
+.tab b{font:500 13px var(--f-mono)}
+.tab small{font-size:11.5px;color:var(--mist)}
+.tab[aria-selected="true"]{border-color:rgba(230,203,160,.55);background:rgba(230,203,160,.08)}
+
+.grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.25fr);gap:18px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.panel-h h2{margin:0;font:500 13px var(--f-mono);text-transform:uppercase;letter-spacing:.12em;color:var(--mist)}
+
+.alert{padding:18px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.alert .name{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.alert .name b{font:600 15px var(--f-mono);color:var(--bad)}
+.sev{font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.1em;padding:3px 8px;border-radius:999px;background:rgba(224,142,138,.14);color:var(--bad)}
+.sev.warning{background:rgba(230,203,160,.14);color:var(--warn)}
+.alert p{margin:0;color:var(--mist);font-size:14px}
+.alert .tgt{font:400 12.5px var(--f-mono);color:var(--pearl)}
+.nodes{padding:16px 18px 20px;display:grid;gap:12px}
+.node{border:1px dashed var(--line);border-radius:14px;padding:12px;display:grid;gap:10px;transition:border-color .4s,background .4s}
+.node.hot{border-color:rgba(230,203,160,.7);background:rgba(230,203,160,.05)}
+.node-h{display:flex;justify-content:space-between;gap:8px;font:500 12px var(--f-mono);color:var(--mist)}
+.pods{display:flex;flex-wrap:wrap;gap:8px}
+.pod{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);font:400 11.5px var(--f-mono);max-width:100%;transition:transform .5s var(--ease),border-color .4s,box-shadow .4s}
+.pod span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pod i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.pod.notready i{background:var(--bad);box-shadow:0 0 0 4px rgba(224,142,138,.15)}
+.pod.pending i{background:var(--warn)}
+.pod.other{opacity:.5}
+.pod em{font-style:normal;color:var(--mist)}
+.pod.look{border-color:var(--champagne);box-shadow:0 0 0 3px rgba(230,203,160,.18);transform:translateY(-2px)}
+.pod.fixed i{background:var(--ok);box-shadow:0 0 0 4px rgba(157,179,162,.2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 18px 16px;font:400 11px var(--f-mono);color:var(--mist)}
+.legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--c)}
+
+.controls{display:flex;gap:6px;flex-wrap:wrap}
+.ctl{border:1px solid var(--line);background:rgba(244,237,230,.04);padding:6px 12px;border-radius:999px;cursor:pointer;font:500 12px var(--f-mono)}
+.ctl:hover{border-color:rgba(230,203,160,.45)}
+.ctl[aria-pressed="true"]{background:rgba(230,203,160,.14);border-color:rgba(230,203,160,.5)}
+.trace{height:min(68vh,620px);overflow-y:auto;padding:16px 18px 24px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.ev{animation:in .45s var(--ease) both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.thought{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;color:var(--pearl);font-size:14.5px}
+.thought::before{content:"◆";color:var(--mauve);font-size:12px;padding-top:3px}
+.call{margin-left:28px;font:400 12.5px/1.5 var(--f-mono);color:var(--champagne);overflow-wrap:anywhere}
+.call small{color:var(--mist)}
+.result{margin-left:28px}
+.result summary{cursor:pointer;font:400 11.5px/1.5 var(--f-mono);color:var(--mist);list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result summary::-webkit-details-marker{display:none}
+.result summary::before{content:"▸ ";color:var(--mauve)}
+.result[open] summary::before{content:"▾ "}
+.result pre{margin:6px 0 0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid var(--line);font:400 11px/1.5 var(--f-mono);color:var(--mist);max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.result.err summary{color:var(--bad)}
+.approve{margin:6px 0 6px 28px;padding:16px;border-radius:16px;border:1px solid rgba(230,203,160,.5);background:linear-gradient(135deg,rgba(230,203,160,.1),rgba(165,136,186,.08));display:grid;gap:10px}
+.approve h3{margin:0;font:600 13px var(--f-mono);color:var(--champagne)}
+.approve .what{font:500 14px var(--f-mono);color:var(--pearl);overflow-wrap:anywhere}
+.approve p{margin:0;color:var(--mist);font-size:14px}
+.approve .btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:none;border-radius:999px;padding:10px 18px;font:600 13.5px var(--f-body);cursor:pointer}
+.btn.yes{background:var(--pearl);color:var(--night)}
+.btn.no{background:transparent;color:var(--pearl);border:1px solid var(--line)}
+.approve .decided{font:500 13px var(--f-mono)}
+.outcome{margin-left:28px;padding:10px 12px;border-radius:12px;background:rgba(157,179,162,.1);border:1px solid rgba(157,179,162,.3);font-size:13.5px;display:grid;gap:4px}
+.outcome.neg{background:rgba(230,203,160,.08);border-color:rgba(230,203,160,.3)}
+.outcome li{font:400 12px var(--f-mono);color:var(--mist);list-style:none}
+.idle{color:var(--mist);font-size:14px;margin:auto;text-align:center;max-width:36ch}
+
+.report{margin-block:18px 40px;padding:clamp(20px,3vw,32px);display:grid;gap:18px}
+.report[hidden]{display:none!important}
+.rep-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.chip{font:500 11.5px var(--f-mono);text-transform:uppercase;letter-spacing:.08em;padding:5px 11px;border-radius:999px;border:1px solid var(--line)}
+.chip.resolved{background:rgba(157,179,162,.16);border-color:rgba(157,179,162,.4);color:var(--ok)}
+.chip.awaiting_human{background:rgba(230,203,160,.14);border-color:rgba(230,203,160,.4);color:var(--warn)}
+.conf{display:flex;align-items:center;gap:8px;font:400 12px var(--f-mono);color:var(--mist)}
+.conf i{display:block;width:120px;height:6px;border-radius:6px;background:var(--line);overflow:hidden}
+.conf i b{display:block;height:100%;background:linear-gradient(90deg,var(--mauve),var(--champagne))}
+.report h2{margin:0;font:400 clamp(24px,3vw,34px)/1.15 var(--f-display);font-variation-settings:"SOFT" 100}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px}
+.cols h3{margin:0 0 8px;font:500 11.5px var(--f-mono);text-transform:uppercase;letter-spacing:.12em;color:var(--champagne)}
+.cols ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--mist);font-size:14px}
+.cols p{margin:0;color:var(--mist);font-size:14px}
+.truth{font:400 12.5px var(--f-mono);color:var(--ok)}
+.truth.miss{color:var(--bad)}
+footer .wrap{padding-block:10px 40px;color:var(--mist);font:400 12px var(--f-mono);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media (prefers-reduced-motion: reduce){.ev{animation:none}.pod{transition:none}.trace{scroll-behavior:auto}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">Agentic SRE · Kubernetes · Claude · MCP</p>
+    <h1>Kube<em>Sleuth</em></h1>
+    <p class="lede">An AI agent that investigates Kubernetes incidents the way an on-call engineer would: pods, crash logs, events, rollout history and metrics. It finds the root cause and proposes one fix, and nothing changes until you approve it. Pick an incident below and watch it work.</p>
+    <div class="meta"><span>read-only by default</span><span>human approval gate</span><span>6/6 diagnosed in offline eval</span><span>Python · Anthropic SDK · MCP</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabs" role="tablist" aria-label="Incident scenarios" id="tabs"></div>
+  <div class="grid">
+    <section class="panel" aria-label="Cluster">
+      <div class="panel-h"><h2>Cluster</h2><span class="mono" style="font-size:11.5px;color:var(--mist)" id="ns"></span></div>
+      <div class="alert" id="alert"></div>
+      <div class="nodes" id="nodes"></div>
+      <div class="legend"><span style="--c:var(--ok)">ready</span><span style="--c:var(--bad)">not ready</span><span style="--c:var(--warn)">pending / failed</span><span style="--c:var(--champagne)">being inspected</span></div>
+    </section>
+    <section class="panel" aria-label="Agent trace">
+      <div class="panel-h">
+        <h2>Agent trace</h2>
+        <div class="controls">
+          <button class="ctl" id="play" type="button" aria-pressed="true">Pause</button>
+          <button class="ctl" id="step" type="button">Step</button>
+          <button class="ctl" id="fast" type="button" aria-pressed="false">2×</button>
+          <button class="ctl" id="restart" type="button">Restart</button>
+        </div>
+      </div>
+      <div class="trace" id="trace" aria-live="polite"></div>
+    </section>
+  </div>
+  <section class="panel report" id="report" hidden aria-label="Incident report"></section>
+</main>
+
+<footer><div class="wrap"><span>KubeSleuth · built by Sudha Rani Seeli</span><span>Traces recorded from the offline playbook brain on simulated incidents</span></div></footer>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(() => {
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const $ = s => document.querySelector(s);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SHORT = {'oom-kill':'OOMKilled','crashloop-config':'Crash loop','image-pull':'Image pull','bad-rollout-5xx':'Bad rollout','disk-pressure':'Disk pressure','readiness-probe':'Readiness probe'};
+
+const S = { s: 0, i: 0, playing: !reduce, fast: false, timer: null, waiting: false, decision: null, skipping: false };
+const trace = $('#trace');
+
+function tabs() {
+  $('#tabs').innerHTML = DATA.map((d, k) => `<button class="tab" role="tab" type="button" aria-selected="${k === S.s}" data-k="${k}"><b>${esc(SHORT[d.id] || d.id)}</b><small>${esc(d.title)}</small></button>`).join('');
+  $('#tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => load(+b.dataset.k)));
+}
+
+function cluster(d) {
+  const alert = d.events[0].data;
+  const owner = alert.target;
+  $('#ns').textContent = 'namespace ' + alert.namespace;
+  $('#alert').innerHTML = `<div class="name"><b>▲ ${esc(alert.name)}</b><span class="sev ${esc(alert.severity)}">${esc(alert.severity)}</span></div>
+    <p>${esc(alert.summary)}</p><span class="tgt">${esc(owner)}</span>`;
+  const byNode = {};
+  d.pods.forEach(p => (byNode[p.node || 'unscheduled'] ||= []).push(p));
+  $('#nodes').innerHTML = Object.entries(byNode).map(([node, pods]) => `
+    <div class="node" data-node="${esc(node)}"><div class="node-h"><span>node ${esc(node)}</span><span>${pods.length} pod${pods.length > 1 ? 's' : ''}</span></div>
+    <div class="pods">${pods.map(p => {
+      const notReady = p.ready.startsWith('0/');
+      const cls = p.phase === 'Pending' || p.phase === 'Failed' ? 'pending' : notReady ? 'notready' : '';
+      return `<div class="pod ${cls} ${p.owner !== owner ? 'other' : ''}" data-pod="${esc(p.name)}" data-owner="${esc(p.owner)}" title="${esc(p.name)} · ${esc(p.phase)} · ready ${esc(p.ready)} · ${p.restarts} restarts"><i></i><span>${esc(p.name)}</span>${p.restarts ? `<em>↻${p.restarts}</em>` : ''}</div>`;
+    }).join('')}</div></div>`).join('');
+}
+
+function highlight(input) {
+  document.querySelectorAll('.pod.look').forEach(el => el.classList.remove('look'));
+  document.querySelectorAll('.node.hot').forEach(el => el.classList.remove('hot'));
+  if (!input) return;
+  if (input.name) document.querySelectorAll(`.pod[data-pod="${CSS.escape(input.name)}"]`).forEach(el => el.classList.add('look'));
+  if (input.owner) document.querySelectorAll(`.pod[data-owner="${CSS.escape(input.owner)}"]`).forEach(el => el.classList.add('look'));
+  const node = input.name || input.target;
+  if (node) document.querySelectorAll(`.node[data-node="${CSS.escape(node)}"]`).forEach(el => el.classList.add('hot'));
+}
+
+function add(html) {
+  const div = document.createElement('div');
+  div.className = 'ev';
+  div.innerHTML = html;
+  trace.appendChild(div);
+  trace.scrollTop = trace.scrollHeight;
+  return div;
+}
+
+const HIDE_ARGS = ['evidence', 'follow_ups', 'root_cause', 'rationale', 'remediation'];
+function render(ev) {
+  const d = ev.data;
+  switch (ev.kind) {
+    case 'thought': add(`<div class="thought"><span>${esc(d.text)}</span></div>`); break;
+    case 'tool_call': {
+      const args = Object.entries(d.input).filter(([k]) => !HIDE_ARGS.includes(k)).map(([k, v]) => `${k}=${esc(JSON.stringify(v))}`).join(', ');
+      add(`<div class="call">→ ${esc(d.name)}<small>(${args})</small></div>`);
+      if (d.name !== 'submit_report') highlight(d.input);
+      break;
+    }
+    case 'tool_result':
+      if (d.name === 'propose_remediation' || d.name === 'submit_report') break;
+      add(`<details class="result ${d.is_error ? 'err' : ''}"><summary>${esc(d.content.replace(/\s+/g, ' ').slice(0, 150))}</summary><pre>${esc(d.content)}</pre></details>`);
+      break;
+    case 'approval_request': {
+      S.waiting = true;
+      stop();
+      const card = add(`<div class="approve"><h3>⚑ Approval needed · risk ${esc(d.risk)}</h3><div class="what">${esc(d.summary)}</div><p>${esc(d.rationale)}</p>
+        <div class="btns"><button class="btn yes" type="button">Approve fix</button><button class="btn no" type="button">Reject</button></div></div>`);
+      card.querySelector('.yes').focus({ preventScroll: true });
+      card.querySelector('.yes').onclick = () => decide(true, card, d);
+      card.querySelector('.no').onclick = () => decide(false, card, d);
+      break;
+    }
+    case 'approval': break; // rendered by decide()
+    case 'action_result':
+      document.querySelectorAll('.pod.notready, .pod.pending').forEach(el => { if (!el.classList.contains('other')) { el.classList.remove('notready', 'pending'); el.classList.add('fixed'); } });
+      add(`<div class="outcome"><b>${esc(d.summary)}</b><ul>${(d.verification || []).map(v => `<li>· ${esc(v)}</li>`).join('')}</ul></div>`);
+      break;
+    case 'report': report(d); highlight(null); break;
+  }
+}
+
+function decide(yes, card, d) {
+  S.waiting = false;
+  S.decision = yes;
+  card.querySelector('.btns').outerHTML = `<div class="decided" style="color:${yes ? 'var(--ok)' : 'var(--warn)'}">${yes ? '✓ Approved by you' : '✗ Rejected by you; nothing was changed'}</div>`;
+  if (!yes) add(`<div class="outcome neg"><b>No change applied.</b><ul><li>· The agent will report its diagnosis and leave the fix to a human.</li></ul></div>`);
+  play();
+}
+
+function report(r) {
+  const d = DATA[S.s];
+  let status = r.status, remediation = r.remediation, evidence = r.evidence;
+  if (S.decision === false) {
+    status = 'awaiting_human';
+    const req = d.events.find(e => e.kind === 'approval_request');
+    remediation = `Proposed ${req ? req.data.summary : 'a fix'}; not applied because it was rejected.`;
+    evidence = evidence.filter(e => !e.startsWith('after fix'));
+  }
+  const ok = r.category === d.ground_truth.category;
+  const el = $('#report');
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="rep-top"><span class="eyebrow">Incident report</span><span class="chip ${esc(status)}">${esc(status.replace('_', ' '))}</span><span class="chip">${esc(r.category)}</span>
+      <span class="conf">confidence <i><b style="width:${Math.round(r.confidence * 100)}%"></b></i> ${Math.round(r.confidence * 100)}%</span></div>
+    <h2>${esc(r.root_cause)}</h2>
+    <div class="cols">
+      <div><h3>Evidence</h3><ul>${evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>
+      <div><h3>Remediation</h3><p>${esc(remediation)}</p><h3 style="margin-top:18px">Follow-ups</h3><ul>${r.follow_ups.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
+      <div><h3>Scored against ground truth</h3><p class="truth ${ok ? '' : 'miss'}">${ok ? '✓' : '✗'} expected ${esc(d.ground_truth.category)}, diagnosed ${esc(r.category)}</p><p style="margin-top:8px">${esc(d.ground_truth.root_cause)}</p></div>
+    </div>`;
+}
+
+function next() {
+  const events = DATA[S.s].events;
+  if (S.waiting || S.i >= events.length) { stop(); setPlayLabel(); return false; }
+  const ev = events[S.i++];
+  if (S.decision === false && (ev.kind === 'action_result' || (ev.kind === 'tool_result' && ev.data.name === 'propose_remediation'))) return next();
+  render(ev);
+  return true;
+}
+
+function delay(kind) {
+  const base = { thought: 1300, tool_call: 650, tool_result: 450, action_result: 1400, alert: 300 }[kind] ?? 600;
+  return S.fast ? base / 2.5 : base;
+}
+
+function schedule() {
+  clearTimeout(S.timer);
+  if (!S.playing || S.waiting) return;
+  const events = DATA[S.s].events;
+  if (S.i >= events.length) { S.playing = false; setPlayLabel(); return; }
+  S.timer = setTimeout(() => { if (next()) schedule(); }, delay(events[S.i].kind));
+}
+function play() { S.playing = true; setPlayLabel(); schedule(); }
+function stop() { clearTimeout(S.timer); }
+function setPlayLabel() {
+  const done = S.i >= DATA[S.s].events.length;
+  const b = $('#play');
+  b.textContent = done ? 'Replay' : S.playing && !S.waiting ? 'Pause' : 'Play';
+  b.setAttribute('aria-pressed', String(S.playing && !done));
+}
+
+function load(k) {
+  stop();
+  Object.assign(S, { s: k, i: 1, waiting: false, decision: null, playing: !reduce });
+  tabs();
+  cluster(DATA[k]);
+  trace.innerHTML = '';
+  $('#report').hidden = true;
+  if (reduce) add('<p class="idle">Press Step to walk through the investigation one action at a time, or Play to run it.</p>');
+  setPlayLabel();
+  schedule();
+}
+
+$('#play').onclick = () => {
+  if (S.i >= DATA[S.s].events.length) return load(S.s);
+  if (S.playing) { S.playing = false; stop(); setPlayLabel(); } else play();
+};
+$('#step').onclick = () => { S.playing = false; stop(); next(); setPlayLabel(); };
+$('#fast').onclick = e => { S.fast = !S.fast; e.currentTarget.setAttribute('aria-pressed', String(S.fast)); schedule(); };
+$('#restart').onclick = () => load(S.s);
+
+const hash = location.hash.slice(1);
+const start = Math.max(0, DATA.findIndex(d => d.id === hash));
+load(start);
+})();
+</script>

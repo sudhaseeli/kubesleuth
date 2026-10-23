@@ -1,0 +1,85 @@
+{
+  "id": "crashloop-config",
+  "title": "ledger-worker is crash-looping right after a secrets migration",
+  "alert": {
+    "name": "KubeDeploymentReplicasMismatch",
+    "severity": "critical",
+    "namespace": "payments",
+    "target": "deployment/ledger-worker",
+    "fired_at": "2026-10-21T09:24:00Z",
+    "summary": "Deployment payments/ledger-worker has 0 of 2 replicas available for 10 minutes."
+  },
+  "pods": [
+    {
+      "name": "ledger-worker-6b74c9d8f-hs8pk", "namespace": "payments", "owner": "deployment/ledger-worker",
+      "phase": "Running", "ready": "0/1", "restarts": 9, "node": "ip-10-0-3-44",
+      "containers": [{
+        "name": "ledger-worker", "image": "registry.example.com/ledger-worker:7.2.0",
+        "state": {"waiting": {"reason": "CrashLoopBackOff", "message": "back-off 5m0s restarting failed container"}},
+        "last_state": {"terminated": {"reason": "Error", "exit_code": 1, "finished_at": "2026-10-21T09:22:14Z"}},
+        "env_from": ["secretRef: ledger-secrets-v2"],
+        "resources": {"requests": {"cpu": "200m", "memory": "256Mi"}, "limits": {"memory": "512Mi"}}
+      }],
+      "conditions": {"Ready": "False"}
+    },
+    {
+      "name": "ledger-worker-6b74c9d8f-zq61c", "namespace": "payments", "owner": "deployment/ledger-worker",
+      "phase": "Running", "ready": "0/1", "restarts": 9, "node": "ip-10-0-1-12",
+      "containers": [{
+        "name": "ledger-worker", "image": "registry.example.com/ledger-worker:7.2.0",
+        "state": {"waiting": {"reason": "CrashLoopBackOff", "message": "back-off 5m0s restarting failed container"}},
+        "last_state": {"terminated": {"reason": "Error", "exit_code": 1, "finished_at": "2026-10-21T09:22:40Z"}},
+        "env_from": ["secretRef: ledger-secrets-v2"],
+        "resources": {"requests": {"cpu": "200m", "memory": "256Mi"}, "limits": {"memory": "512Mi"}}
+      }],
+      "conditions": {"Ready": "False"}
+    }
+  ],
+  "logs": {
+    "ledger-worker-6b74c9d8f-hs8pk": {
+      "current": "",
+      "previous": "09:22:13 INFO  ledger-worker 7.2.0 starting\n09:22:13 INFO  loading config from environment\n09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS)\n09:22:14 FATAL refusing to start with invalid configuration"
+    },
+    "ledger-worker-6b74c9d8f-zq61c": {
+      "current": "",
+      "previous": "09:22:39 INFO  ledger-worker 7.2.0 starting\n09:22:39 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS)\n09:22:40 FATAL refusing to start with invalid configuration"
+    }
+  },
+  "events": [
+    {"type": "Warning", "reason": "BackOff", "object": "pod/ledger-worker-6b74c9d8f-hs8pk", "message": "Back-off restarting failed container ledger-worker", "count": 41, "last_seen": "2026-10-21T09:23:50Z"},
+    {"type": "Warning", "reason": "BackOff", "object": "pod/ledger-worker-6b74c9d8f-zq61c", "message": "Back-off restarting failed container ledger-worker", "count": 39, "last_seen": "2026-10-21T09:23:55Z"},
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/ledger-worker", "message": "Scaled down replica set ledger-worker-58c6f7d4b to 0", "count": 1, "last_seen": "2026-10-21T09:13:30Z"}
+  ],
+  "deployments": [
+    {
+      "name": "ledger-worker", "namespace": "payments", "replicas": 2, "ready": 0, "updated": 2,
+      "image": "registry.example.com/ledger-worker:7.2.0",
+      "history": [
+        {"revision": 8, "image": "registry.example.com/ledger-worker:7.2.0", "change_cause": "envFrom secret ledger-secrets", "rolled_out_at": "2026-10-07T15:00:00Z"},
+        {"revision": 9, "image": "registry.example.com/ledger-worker:7.2.0", "change_cause": "migrate to ledger-secrets-v2 (renamed keys to new naming scheme)", "rolled_out_at": "2026-10-21T09:12:00Z"}
+      ]
+    }
+  ],
+  "metrics": {
+    "restarts:ledger-worker": {"unit": "count", "points": [["09:00", 0], ["09:12", 0], ["09:15", 4], ["09:20", 14], ["09:24", 18]]},
+    "memory_working_set:ledger-worker": {"unit": "MiB", "points": [["09:00", 210], ["09:12", 212], ["09:15", 31], ["09:24", 29]]},
+    "cpu_usage:ledger-worker": {"unit": "cores", "points": [["09:00", 0.18], ["09:15", 0.02], ["09:24", 0.01]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-3-44", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "8", "memory": "31Gi"}, "taints": []},
+    {"name": "ip-10-0-1-12", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [{"action": "rollback_deployment", "target": "ledger-worker"}],
+    "after": {
+      "summary": "Both replicas started on revision 8 and are consuming from Kafka again.",
+      "checks": ["2/2 replicas ready", "restarts:ledger-worker flat for 10m", "consumer lag draining: 41k -> 2k messages"]
+    },
+    "wrong_fix": "Pods still exit with code 1 on startup: config key LEDGER_DB_URL is not set."
+  },
+  "ground_truth": {
+    "category": "CrashLoopBackOff",
+    "root_cause": "Revision 9 switched to ledger-secrets-v2, which renamed LEDGER_DB_URL to LEDGER_DATABASE_URL; the worker exits on startup because the key it expects is missing.",
+    "action": "rollback_deployment"
+  }
+}

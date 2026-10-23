@@ -1,0 +1,2312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KubeSleuth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive demo of KubeSleuth, an agentic SRE that investigates Kubernetes incidents and proposes fixes that wait for human approval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100;1,9..144,300..700,0..100&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one dark console page; cluster map on the left, the agent's live trace on the right, report below */
+:root{
+  --night:#120D17; --panel:#1B1421; --panel-2:#231a2b; --line:rgba(244,237,230,.11);
+  --pearl:#F4EDE6; --mist:#BCAFBC; --rose:#D9A3A0; --champagne:#E6CBA0; --mauve:#A588BA;
+  --ok:#9DB3A2; --warn:#E6CBA0; --bad:#E08E8A;
+  --f-display:"Fraunces","Iowan Old Style",Georgia,serif;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;background:var(--night);color:var(--pearl);font:400 15px/1.6 var(--f-body);
+  background-image:radial-gradient(60vmax 40vmax at 85% -10%,rgba(165,136,186,.18),transparent 60%),radial-gradient(50vmax 35vmax at -10% 110%,rgba(217,163,160,.12),transparent 60%);background-attachment:fixed}
+.wrap{max-width:1240px;margin-inline:auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+a{color:var(--champagne)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--champagne);outline-offset:3px;border-radius:6px}
+.mono{font-family:var(--f-mono)}
+.eyebrow{font:500 11px/1.4 var(--f-mono);text-transform:uppercase;letter-spacing:.14em;color:var(--champagne)}
+
+header.top .wrap{padding-block:40px 24px;display:grid;gap:14px}
+h1{margin:0;font:300 clamp(40px,6vw,72px)/.95 var(--f-display);letter-spacing:-.03em;font-variation-settings:"opsz" 144,"SOFT" 60}
+h1 em{font-style:italic;color:var(--rose)}
+.lede{max-width:70ch;color:var(--mist);font-size:16px;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.meta span{font:400 12px var(--f-mono);padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--pearl)}
+
+.tabs{display:flex;flex-wrap:wrap;gap:8px;padding-block:8px 20px}
+.tab{border:1px solid var(--line);background:rgba(244,237,230,.03);padding:9px 14px;border-radius:12px;cursor:pointer;text-align:left;display:grid;gap:2px;transition:border-color .3s,background .3s}
+.tab b{font:500 13px var(--f-mono)}
+.tab small{font-size:11.5px;color:var(--mist)}
+.tab[aria-selected="true"]{border-color:rgba(230,203,160,.55);background:rgba(230,203,160,.08)}
+
+.grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.25fr);gap:18px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.panel-h h2{margin:0;font:500 13px var(--f-mono);text-transform:uppercase;letter-spacing:.12em;color:var(--mist)}
+
+.alert{padding:18px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.alert .name{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.alert .name b{font:600 15px var(--f-mono);color:var(--bad)}
+.sev{font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.1em;padding:3px 8px;border-radius:999px;background:rgba(224,142,138,.14);color:var(--bad)}
+.sev.warning{background:rgba(230,203,160,.14);color:var(--warn)}
+.alert p{margin:0;color:var(--mist);font-size:14px}
+.alert .tgt{font:400 12.5px var(--f-mono);color:var(--pearl)}
+.nodes{padding:16px 18px 20px;display:grid;gap:12px}
+.node{border:1px dashed var(--line);border-radius:14px;padding:12px;display:grid;gap:10px;transition:border-color .4s,background .4s}
+.node.hot{border-color:rgba(230,203,160,.7);background:rgba(230,203,160,.05)}
+.node-h{display:flex;justify-content:space-between;gap:8px;font:500 12px var(--f-mono);color:var(--mist)}
+.pods{display:flex;flex-wrap:wrap;gap:8px}
+.pod{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);font:400 11.5px var(--f-mono);max-width:100%;transition:transform .5s var(--ease),border-color .4s,box-shadow .4s}
+.pod span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pod i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.pod.notready i{background:var(--bad);box-shadow:0 0 0 4px rgba(224,142,138,.15)}
+.pod.pending i{background:var(--warn)}
+.pod.other{opacity:.5}
+.pod em{font-style:normal;color:var(--mist)}
+.pod.look{border-color:var(--champagne);box-shadow:0 0 0 3px rgba(230,203,160,.18);transform:translateY(-2px)}
+.pod.fixed i{background:var(--ok);box-shadow:0 0 0 4px rgba(157,179,162,.2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 18px 16px;font:400 11px var(--f-mono);color:var(--mist)}
+.legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--c)}
+
+.controls{display:flex;gap:6px;flex-wrap:wrap}
+.ctl{border:1px solid var(--line);background:rgba(244,237,230,.04);padding:6px 12px;border-radius:999px;cursor:pointer;font:500 12px var(--f-mono)}
+.ctl:hover{border-color:rgba(230,203,160,.45)}
+.ctl[aria-pressed="true"]{background:rgba(230,203,160,.14);border-color:rgba(230,203,160,.5)}
+.trace{height:min(68vh,620px);overflow-y:auto;padding:16px 18px 24px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.ev{animation:in .45s var(--ease) both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.thought{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;color:var(--pearl);font-size:14.5px}
+.thought::before{content:"◆";color:var(--mauve);font-size:12px;padding-top:3px}
+.call{margin-left:28px;font:400 12.5px/1.5 var(--f-mono);color:var(--champagne);overflow-wrap:anywhere}
+.call small{color:var(--mist)}
+.result{margin-left:28px}
+.result summary{cursor:pointer;font:400 11.5px/1.5 var(--f-mono);color:var(--mist);list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result summary::-webkit-details-marker{display:none}
+.result summary::before{content:"▸ ";color:var(--mauve)}
+.result[open] summary::before{content:"▾ "}
+.result pre{margin:6px 0 0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid var(--line);font:400 11px/1.5 var(--f-mono);color:var(--mist);max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.result.err summary{color:var(--bad)}
+.approve{margin:6px 0 6px 28px;padding:16px;border-radius:16px;border:1px solid rgba(230,203,160,.5);background:linear-gradient(135deg,rgba(230,203,160,.1),rgba(165,136,186,.08));display:grid;gap:10px}
+.approve h3{margin:0;font:600 13px var(--f-mono);color:var(--champagne)}
+.approve .what{font:500 14px var(--f-mono);color:var(--pearl);overflow-wrap:anywhere}
+.approve p{margin:0;color:var(--mist);font-size:14px}
+.approve .btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:none;border-radius:999px;padding:10px 18px;font:600 13.5px var(--f-body);cursor:pointer}
+.btn.yes{background:var(--pearl);color:var(--night)}
+.btn.no{background:transparent;color:var(--pearl);border:1px solid var(--line)}
+.approve .decided{font:500 13px var(--f-mono)}
+.outcome{margin-left:28px;padding:10px 12px;border-radius:12px;background:rgba(157,179,162,.1);border:1px solid rgba(157,179,162,.3);font-size:13.5px;display:grid;gap:4px}
+.outcome.neg{background:rgba(230,203,160,.08);border-color:rgba(230,203,160,.3)}
+.outcome li{font:400 12px var(--f-mono);color:var(--mist);list-style:none}
+.idle{color:var(--mist);font-size:14px;margin:auto;text-align:center;max-width:36ch}
+
+.report{margin-block:18px 40px;padding:clamp(20px,3vw,32px);display:grid;gap:18px}
+.report[hidden]{display:none!important}
+.rep-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.chip{font:500 11.5px var(--f-mono);text-transform:uppercase;letter-spacing:.08em;padding:5px 11px;border-radius:999px;border:1px solid var(--line)}
+.chip.resolved{background:rgba(157,179,162,.16);border-color:rgba(157,179,162,.4);color:var(--ok)}
+.chip.awaiting_human{background:rgba(230,203,160,.14);border-color:rgba(230,203,160,.4);color:var(--warn)}
+.conf{display:flex;align-items:center;gap:8px;font:400 12px var(--f-mono);color:var(--mist)}
+.conf i{display:block;width:120px;height:6px;border-radius:6px;background:var(--line);overflow:hidden}
+.conf i b{display:block;height:100%;background:linear-gradient(90deg,var(--mauve),var(--champagne))}
+.report h2{margin:0;font:400 clamp(24px,3vw,34px)/1.15 var(--f-display);font-variation-settings:"SOFT" 100}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px}
+.cols h3{margin:0 0 8px;font:500 11.5px var(--f-mono);text-transform:uppercase;letter-spacing:.12em;color:var(--champagne)}
+.cols ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--mist);font-size:14px}
+.cols p{margin:0;color:var(--mist);font-size:14px}
+.truth{font:400 12.5px var(--f-mono);color:var(--ok)}
+.truth.miss{color:var(--bad)}
+footer .wrap{padding-block:10px 40px;color:var(--mist);font:400 12px var(--f-mono);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media (prefers-reduced-motion: reduce){.ev{animation:none}.pod{transition:none}.trace{scroll-behavior:auto}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">Agentic SRE · Kubernetes · Claude · MCP</p>
+    <h1>Kube<em>Sleuth</em></h1>
+    <p class="lede">An AI agent that investigates Kubernetes incidents the way an on-call engineer would: pods, crash logs, events, rollout history and metrics. It finds the root cause and proposes one fix, and nothing changes until you approve it. Pick an incident below and watch it work.</p>
+    <div class="meta"><span>read-only by default</span><span>human approval gate</span><span>6/6 diagnosed in offline eval</span><span>Python · Anthropic SDK · MCP</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabs" role="tablist" aria-label="Incident scenarios" id="tabs"></div>
+  <div class="grid">
+    <section class="panel" aria-label="Cluster">
+      <div class="panel-h"><h2>Cluster</h2><span class="mono" style="font-size:11.5px;color:var(--mist)" id="ns"></span></div>
+      <div class="alert" id="alert"></div>
+      <div class="nodes" id="nodes"></div>
+      <div class="legend"><span style="--c:var(--ok)">ready</span><span style="--c:var(--bad)">not ready</span><span style="--c:var(--warn)">pending / failed</span><span style="--c:var(--champagne)">being inspected</span></div>
+    </section>
+    <section class="panel" aria-label="Agent trace">
+      <div class="panel-h">
+        <h2>Agent trace</h2>
+        <div class="controls">
+          <button class="ctl" id="play" type="button" aria-pressed="true">Pause</button>
+          <button class="ctl" id="step" type="button">Step</button>
+          <button class="ctl" id="fast" type="button" aria-pressed="false">2×</button>
+          <button class="ctl" id="restart" type="button">Restart</button>
+        </div>
+      </div>
+      <div class="trace" id="trace" aria-live="polite"></div>
+    </section>
+  </div>
+  <section class="panel report" id="report" hidden aria-label="Incident report"></section>
+</main>
+
+<footer><div class="wrap"><span>KubeSleuth · built by Sudha Rani Seeli</span><span>Traces recorded from the offline playbook brain on simulated incidents</span></div></footer>
+
+<script type="application/json" id="data">[
+ {
+  "id": "oom-kill",
+  "title": "checkout-api pods keep restarting during peak traffic",
+  "ground_truth": {
+   "category": "OOMKilled",
+   "root_cause": "Revision 14 enabled the full price-cache preload (~171 MiB), pushing the working set past the 256 MiB memory limit.",
+   "action": "patch_memory_limit"
+  },
+  "pods": [
+   {
+    "name": "checkout-api-7d9f8b6c5-2xkqp",
+    "owner": "deployment/checkout-api",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 7,
+    "node": "ip-10-0-1-12"
+   },
+   {
+    "name": "checkout-api-7d9f8b6c5-8rmvd",
+    "owner": "deployment/checkout-api",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 8,
+    "node": "ip-10-0-2-31"
+   },
+   {
+    "name": "checkout-api-7d9f8b6c5-qw4ts",
+    "owner": "deployment/checkout-api",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 6,
+    "node": "ip-10-0-1-12"
+   },
+   {
+    "name": "cart-svc-5c8d7f9b4-lm2zx",
+    "owner": "deployment/cart-svc",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-2-31"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "KubePodCrashLooping",
+     "severity": "critical",
+     "namespace": "shop",
+     "target": "deployment/checkout-api",
+     "fired_at": "2026-10-21T14:06:00Z",
+     "summary": "Pods of deployment shop/checkout-api restarted 21 times in the last 30 minutes."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "KubePodCrashLooping fired for deployment/checkout-api: Pods of deployment shop/checkout-api restarted 21 times in the last 30 minutes. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "shop",
+      "owner": "deployment/checkout-api"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"OOMKilled\",\n  \"name\": \"checkout-api-7d9f8b6c5-2xkqp\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/checkout-api\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 7\n },\n {\n  \"last_termination\": \"OOMKilled\",\n  \"name\": \"checkout-api-7d9f8b6c5-8rmvd\",\n  \"node\": \"ip-10-0-2-31\",\n  \"owner\": \"deployment/checkout-api\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"CrashLoopBackOff\",\n  \"restarts\": 8\n },\n {\n  \"last_termination\": \"OOMKilled\",\n  \"name\": \"checkout-api-7d9f8b6c5-qw4ts\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/checkout-api\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 6\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "1 of 3 pods look unhealthy. I'll describe the worst one, checkout-api-7d9f8b6c5-8rmvd, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "shop",
+      "name": "checkout-api-7d9f8b6c5-8rmvd"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"ContainersReady\": \"False\",\n  \"Ready\": \"False\"\n },\n \"containers\": [\n  {\n   \"image\": \"registry.example.com/checkout-api:4.18.0\",\n   \"last_state\": {\n    \"terminated\": {\n     \"exit_code\": 137,\n     \"finished_at\": \"2026-10-21T14:05:58Z\",\n     \"reason\": \"OOMKilled\"\n    }\n   },\n   \"name\": \"checkout-api\",\n   \"readiness_probe\": {\n    \"http_get\": \"/healthz\",\n    \"period_seconds\": 10\n   },\n   \"resources\": {\n    \"limits\": {\n     \"cpu\": \"1\",\n     \"memory\": \"256Mi\"\n    },\n    \"requests\": {\n     \"cpu\": \"250m\",\n     \"memory\": \"192Mi\"\n    }\n   },\n   \"state\": {\n    \"waiting\": {\n     \"message\": \"back-off 1m20s restarting failed container\",\n     \"reason\": \"CrashLoopBackOff\"\n    }\n   }\n  }\n ],\n \"name\": \"checkout-api-7d9f8b6c5-8rmvd\",\n \"namespace\": \"shop\",\n \"node\": \"ip-10-0-2-31\",\n \"owner\": \"deployment/checkout-api\",\n \"phase\": \"Running\",\n \"ready\": \"0/1\",\n \"restarts\": 8\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "shop",
+      "object": "checkout-api-7d9f8b6c5-8rmvd"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 14,\n  \"last_seen\": \"2026-10-21T14:06:02Z\",\n  \"message\": \"Back-off restarting failed container checkout-api\",\n  \"object\": \"pod/checkout-api-7d9f8b6c5-8rmvd\",\n  \"reason\": \"BackOff\",\n  \"type\": \"Warning\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs from the crashed instance and the rollout history of checkout-api, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "shop",
+      "name": "checkout-api-7d9f8b6c5-8rmvd",
+      "previous": true,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [\n  \"14:05:31 INFO  starting checkout-api 4.18.0 (PRICE_CACHE_MODE=full)\",\n  \"14:05:32 INFO  connected to postgres primary\",\n  \"14:05:33 INFO  preloading price cache: 48,210 SKUs\",\n  \"14:05:41 INFO  price cache warm: 48,210 SKUs, ~171 MiB\",\n  \"14:05:44 INFO  serving on :8080\",\n  \"14:05:52 INFO  promo engine loaded 3,912 active promotions\",\n  \"14:05:55 WARN  RSS 241 MiB (limit 256 MiB)\",\n  \"14:05:57 WARN  RSS 252 MiB (limit 256 MiB)\"\n ],\n \"pod\": \"checkout-api-7d9f8b6c5-8rmvd\",\n \"previous\": true\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "shop",
+      "name": "checkout-api"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"containers\": [\n  {\n   \"limits\": {\n    \"memory\": \"256Mi\"\n   },\n   \"name\": \"checkout-api\"\n  }\n ],\n \"history\": [\n  {\n   \"change_cause\": \"promo engine v3\",\n   \"image\": \"registry.example.com/checkout-api:4.17.2\",\n   \"revision\": 13,\n   \"rolled_out_at\": \"2026-10-14T10:00:00Z\"\n  },\n  {\n   \"change_cause\": \"enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency\",\n   \"image\": \"registry.example.com/checkout-api:4.18.0\",\n   \"revision\": 14,\n   \"rolled_out_at\": \"2026-10-21T13:12:00Z\"\n  }\n ],\n \"image\": \"registry.example.com/checkout-api:4.18.0\",\n \"name\": \"checkout-api\",\n \"namespace\": \"shop\",\n \"ready\": 2,\n \"replicas\": 3,\n \"updated\": 3\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "The container was OOMKilled. I'll compare its memory working set with its limit to confirm it is genuinely running out of memory rather than leaking slowly."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "input": {
+      "metric": "memory_working_set",
+      "namespace": "shop",
+      "target": "checkout-api",
+      "window": "1h"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "content": "{\n \"metric\": \"memory_working_set\",\n \"points\": [\n  [\n   \"13:00\",\n   118\n  ],\n  [\n   \"13:10\",\n   121\n  ],\n  [\n   \"13:20\",\n   214\n  ],\n  [\n   \"13:30\",\n   236\n  ],\n  [\n   \"13:40\",\n   251\n  ],\n  [\n   \"13:50\",\n   255\n  ],\n  [\n   \"14:00\",\n   254\n  ]\n ],\n \"summary\": {\n  \"last\": 254,\n  \"max\": 255,\n  \"min\": 118,\n  \"trend\": \"rising\"\n },\n \"target\": \"checkout-api\",\n \"unit\": \"MiB\",\n \"window\": \"1h\"\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_8",
+     "name": "query_metric",
+     "input": {
+      "metric": "memory_limit",
+      "namespace": "shop",
+      "target": "checkout-api",
+      "window": "1h"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_8",
+     "name": "query_metric",
+     "content": "{\n \"metric\": \"memory_limit\",\n \"points\": [\n  [\n   \"13:00\",\n   256\n  ],\n  [\n   \"14:00\",\n   256\n  ]\n ],\n \"summary\": {\n  \"last\": 256,\n  \"max\": 256,\n  \"min\": 256,\n  \"trend\": \"flat\"\n },\n \"target\": \"checkout-api\",\n \"unit\": \"MiB\",\n \"window\": \"1h\"\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (OOMKilled). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_9",
+     "name": "propose_remediation",
+     "input": {
+      "action": "patch_memory_limit",
+      "namespace": "shop",
+      "target": "checkout-api",
+      "params": {
+       "container": "checkout-api",
+       "memory": "512Mi"
+      },
+      "rationale": "Working set peaks near the 256 MiB limit; doubling it to 512Mi stops the OOM kills while the cache change is reviewed.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "patch_memory_limit",
+     "namespace": "shop",
+     "target": "checkout-api",
+     "params": {
+      "container": "checkout-api",
+      "memory": "512Mi"
+     },
+     "rationale": "Working set peaks near the 256 MiB limit; doubling it to 512Mi stops the OOM kills while the cache change is reviewed.",
+     "risk": "low",
+     "summary": "patch_memory_limit shop/checkout-api (container=checkout-api, memory=512Mi)"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "patch_memory_limit shop/checkout-api (container=checkout-api, memory=512Mi)"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "patch_memory_limit shop/checkout-api (container=checkout-api, memory=512Mi)",
+     "verification": [
+      "restarts:checkout-api flat at 21 for 10m",
+      "memory_working_set peaks at 262 MiB of 512 MiB",
+      "http_5xx_rate back to 0.2%"
+     ],
+     "symptoms_resolved": true,
+     "summary": "No OOM kills in the 10 minutes after the change; all 3 replicas ready."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_9",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"patch_memory_limit shop/checkout-api (container=checkout-api, memory=512Mi)\", \"verification\": [\"restarts:checkout-api flat at 21 for 10m\", \"memory_working_set peaks at 262 MiB of 512 MiB\", \"http_5xx_rate back to 0.2%\"], \"symptoms_resolved\": true, \"summary\": \"No OOM kills in the 10 minutes after the change; all 3 replicas ready.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_10",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "The checkout-api container is exceeding its 256Mi memory limit and is OOMKilled. Memory jumped after revision 14 (\"enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency\").",
+      "category": "OOMKilled",
+      "confidence": 0.9,
+      "evidence": [
+       "1 of 3 pods unhealthy and 3 restarted; worst is checkout-api-7d9f8b6c5-8rmvd (Running, ready 0/1, 8 restarts, CrashLoopBackOff)",
+       "last termination: OOMKilled (exit code 137)",
+       "container waiting: CrashLoopBackOff",
+       "latest rollout: revision 14 at 2026-10-21T13:12:00Z (\"enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency\")",
+       "memory working set rising to 255 MiB against a 256 MiB limit",
+       "after fix: restarts:checkout-api flat at 21 for 10m",
+       "after fix: memory_working_set peaks at 262 MiB of 512 MiB",
+       "after fix: http_5xx_rate back to 0.2%"
+      ],
+      "remediation": "Applied patch_memory_limit shop/checkout-api. No OOM kills in the 10 minutes after the change; all 3 replicas ready.",
+      "follow_ups": [
+       "Bound the in-memory cache or make the preload size configurable.",
+       "Add an alert on memory working set above 85% of the limit.",
+       "Load-test memory before rolling out cache changes."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_10",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "The checkout-api container is exceeding its 256Mi memory limit and is OOMKilled. Memory jumped after revision 14 (\"enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency\").",
+     "category": "OOMKilled",
+     "confidence": 0.9,
+     "evidence": [
+      "1 of 3 pods unhealthy and 3 restarted; worst is checkout-api-7d9f8b6c5-8rmvd (Running, ready 0/1, 8 restarts, CrashLoopBackOff)",
+      "last termination: OOMKilled (exit code 137)",
+      "container waiting: CrashLoopBackOff",
+      "latest rollout: revision 14 at 2026-10-21T13:12:00Z (\"enable full price-cache preload (PRICE_CACHE_MODE=full) to cut p99 latency\")",
+      "memory working set rising to 255 MiB against a 256 MiB limit",
+      "after fix: restarts:checkout-api flat at 21 for 10m",
+      "after fix: memory_working_set peaks at 262 MiB of 512 MiB",
+      "after fix: http_5xx_rate back to 0.2%"
+     ],
+     "remediation": "Applied patch_memory_limit shop/checkout-api. No OOM kills in the 10 minutes after the change; all 3 replicas ready.",
+     "follow_ups": [
+      "Bound the in-memory cache or make the preload size configurable.",
+      "Add an alert on memory working set above 85% of the limit.",
+      "Load-test memory before rolling out cache changes."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ },
+ {
+  "id": "crashloop-config",
+  "title": "ledger-worker is crash-looping right after a secrets migration",
+  "ground_truth": {
+   "category": "CrashLoopBackOff",
+   "root_cause": "Revision 9 switched to ledger-secrets-v2, which renamed LEDGER_DB_URL to LEDGER_DATABASE_URL; the worker exits on startup because the key it expects is missing.",
+   "action": "rollback_deployment"
+  },
+  "pods": [
+   {
+    "name": "ledger-worker-6b74c9d8f-hs8pk",
+    "owner": "deployment/ledger-worker",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 9,
+    "node": "ip-10-0-3-44"
+   },
+   {
+    "name": "ledger-worker-6b74c9d8f-zq61c",
+    "owner": "deployment/ledger-worker",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 9,
+    "node": "ip-10-0-1-12"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "KubeDeploymentReplicasMismatch",
+     "severity": "critical",
+     "namespace": "payments",
+     "target": "deployment/ledger-worker",
+     "fired_at": "2026-10-21T09:24:00Z",
+     "summary": "Deployment payments/ledger-worker has 0 of 2 replicas available for 10 minutes."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "KubeDeploymentReplicasMismatch fired for deployment/ledger-worker: Deployment payments/ledger-worker has 0 of 2 replicas available for 10 minutes. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "payments",
+      "owner": "deployment/ledger-worker"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"Error\",\n  \"name\": \"ledger-worker-6b74c9d8f-hs8pk\",\n  \"node\": \"ip-10-0-3-44\",\n  \"owner\": \"deployment/ledger-worker\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"CrashLoopBackOff\",\n  \"restarts\": 9\n },\n {\n  \"last_termination\": \"Error\",\n  \"name\": \"ledger-worker-6b74c9d8f-zq61c\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/ledger-worker\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"CrashLoopBackOff\",\n  \"restarts\": 9\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "2 of 2 pods look unhealthy. I'll describe the worst one, ledger-worker-6b74c9d8f-hs8pk, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "payments",
+      "name": "ledger-worker-6b74c9d8f-hs8pk"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"Ready\": \"False\"\n },\n \"containers\": [\n  {\n   \"env_from\": [\n    \"secretRef: ledger-secrets-v2\"\n   ],\n   \"image\": \"registry.example.com/ledger-worker:7.2.0\",\n   \"last_state\": {\n    \"terminated\": {\n     \"exit_code\": 1,\n     \"finished_at\": \"2026-10-21T09:22:14Z\",\n     \"reason\": \"Error\"\n    }\n   },\n   \"name\": \"ledger-worker\",\n   \"resources\": {\n    \"limits\": {\n     \"memory\": \"512Mi\"\n    },\n    \"requests\": {\n     \"cpu\": \"200m\",\n     \"memory\": \"256Mi\"\n    }\n   },\n   \"state\": {\n    \"waiting\": {\n     \"message\": \"back-off 5m0s restarting failed container\",\n     \"reason\": \"CrashLoopBackOff\"\n    }\n   }\n  }\n ],\n \"name\": \"ledger-worker-6b74c9d8f-hs8pk\",\n \"namespace\": \"payments\",\n \"node\": \"ip-10-0-3-44\",\n \"owner\": \"deployment/ledger-worker\",\n \"phase\": \"Running\",\n \"ready\": \"0/1\",\n \"restarts\": 9\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "payments",
+      "object": "ledger-worker-6b74c9d8f-hs8pk"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 41,\n  \"last_seen\": \"2026-10-21T09:23:50Z\",\n  \"message\": \"Back-off restarting failed container ledger-worker\",\n  \"object\": \"pod/ledger-worker-6b74c9d8f-hs8pk\",\n  \"reason\": \"BackOff\",\n  \"type\": \"Warning\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs from the crashed instance and the rollout history of ledger-worker, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "payments",
+      "name": "ledger-worker-6b74c9d8f-hs8pk",
+      "previous": true,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [\n  \"09:22:13 INFO  ledger-worker 7.2.0 starting\",\n  \"09:22:13 INFO  loading config from environment\",\n  \"09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS)\",\n  \"09:22:14 FATAL refusing to start with invalid configuration\"\n ],\n \"pod\": \"ledger-worker-6b74c9d8f-hs8pk\",\n \"previous\": true\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "payments",
+      "name": "ledger-worker"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"history\": [\n  {\n   \"change_cause\": \"envFrom secret ledger-secrets\",\n   \"image\": \"registry.example.com/ledger-worker:7.2.0\",\n   \"revision\": 8,\n   \"rolled_out_at\": \"2026-10-07T15:00:00Z\"\n  },\n  {\n   \"change_cause\": \"migrate to ledger-secrets-v2 (renamed keys to new naming scheme)\",\n   \"image\": \"registry.example.com/ledger-worker:7.2.0\",\n   \"revision\": 9,\n   \"rolled_out_at\": \"2026-10-21T09:12:00Z\"\n  }\n ],\n \"image\": \"registry.example.com/ledger-worker:7.2.0\",\n \"name\": \"ledger-worker\",\n \"namespace\": \"payments\",\n \"ready\": 0,\n \"replicas\": 2,\n \"updated\": 2\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (CrashLoopBackOff). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "input": {
+      "action": "rollback_deployment",
+      "namespace": "payments",
+      "target": "ledger-worker",
+      "params": {
+       "to_revision": 8
+      },
+      "rationale": "The crash starts with the latest revision and the previous revision ran cleanly; rolling back restores service while the config is fixed.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "rollback_deployment",
+     "namespace": "payments",
+     "target": "ledger-worker",
+     "params": {
+      "to_revision": 8
+     },
+     "rationale": "The crash starts with the latest revision and the previous revision ran cleanly; rolling back restores service while the config is fixed.",
+     "risk": "low",
+     "summary": "rollback_deployment payments/ledger-worker (to_revision=8)"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "rollback_deployment payments/ledger-worker (to_revision=8)"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "rollback_deployment payments/ledger-worker (to_revision=8)",
+     "verification": [
+      "2/2 replicas ready",
+      "restarts:ledger-worker flat for 10m",
+      "consumer lag draining: 41k -> 2k messages"
+     ],
+     "symptoms_resolved": true,
+     "summary": "Both replicas started on revision 8 and are consuming from Kafka again."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"rollback_deployment payments/ledger-worker (to_revision=8)\", \"verification\": [\"2/2 replicas ready\", \"restarts:ledger-worker flat for 10m\", \"consumer lag draining: 41k -> 2k messages\"], \"symptoms_resolved\": true, \"summary\": \"Both replicas started on revision 8 and are consuming from Kafka again.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "ledger-worker exits on startup and is crash-looping. The crash log says: 09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS) This started with revision 9 (\"migrate to ledger-secrets-v2 (renamed keys to new naming scheme)\").",
+      "category": "CrashLoopBackOff",
+      "confidence": 0.88,
+      "evidence": [
+       "2 of 2 pods unhealthy and 2 restarted; worst is ledger-worker-6b74c9d8f-hs8pk (Running, ready 0/1, 9 restarts, CrashLoopBackOff)",
+       "last termination: Error (exit code 1)",
+       "container waiting: CrashLoopBackOff",
+       "log: 09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS)",
+       "log: 09:22:14 FATAL refusing to start with invalid configuration",
+       "latest rollout: revision 9 at 2026-10-21T09:12:00Z (\"migrate to ledger-secrets-v2 (renamed keys to new naming scheme)\")",
+       "after fix: 2/2 replicas ready",
+       "after fix: restarts:ledger-worker flat for 10m",
+       "after fix: consumer lag draining: 41k -> 2k messages"
+      ],
+      "remediation": "Applied rollback_deployment payments/ledger-worker. Both replicas started on revision 8 and are consuming from Kafka again.",
+      "follow_ups": [
+       "Fix the configuration the latest revision broke.",
+       "Validate required config at deploy time, not only at startup."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "ledger-worker exits on startup and is crash-looping. The crash log says: 09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS) This started with revision 9 (\"migrate to ledger-secrets-v2 (renamed keys to new naming scheme)\").",
+     "category": "CrashLoopBackOff",
+     "confidence": 0.88,
+     "evidence": [
+      "2 of 2 pods unhealthy and 2 restarted; worst is ledger-worker-6b74c9d8f-hs8pk (Running, ready 0/1, 9 restarts, CrashLoopBackOff)",
+      "last termination: Error (exit code 1)",
+      "container waiting: CrashLoopBackOff",
+      "log: 09:22:13 ERROR config: required key LEDGER_DB_URL is not set (found: LEDGER_DATABASE_URL, LEDGER_KAFKA_BROKERS)",
+      "log: 09:22:14 FATAL refusing to start with invalid configuration",
+      "latest rollout: revision 9 at 2026-10-21T09:12:00Z (\"migrate to ledger-secrets-v2 (renamed keys to new naming scheme)\")",
+      "after fix: 2/2 replicas ready",
+      "after fix: restarts:ledger-worker flat for 10m",
+      "after fix: consumer lag draining: 41k -> 2k messages"
+     ],
+     "remediation": "Applied rollback_deployment payments/ledger-worker. Both replicas started on revision 8 and are consuming from Kafka again.",
+     "follow_ups": [
+      "Fix the configuration the latest revision broke.",
+      "Validate required config at deploy time, not only at startup."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ },
+ {
+  "id": "image-pull",
+  "title": "storefront rollout is stuck halfway",
+  "ground_truth": {
+   "category": "ImagePullBackOff",
+   "root_cause": "Revision 32 references image tag v2.31.O (letter O instead of zero), which does not exist in the registry, so the new pod cannot start and the rollout stalls.",
+   "action": "rollback_deployment"
+  },
+  "pods": [
+   {
+    "name": "storefront-84c5b9f7d-9kq2m",
+    "owner": "deployment/storefront",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-1-12"
+   },
+   {
+    "name": "storefront-84c5b9f7d-tc7xw",
+    "owner": "deployment/storefront",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-2-31"
+   },
+   {
+    "name": "storefront-6f9d4c8b2-x8vnr",
+    "owner": "deployment/storefront",
+    "phase": "Pending",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-44"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "KubeDeploymentRolloutStuck",
+     "severity": "warning",
+     "namespace": "web",
+     "target": "deployment/storefront",
+     "fired_at": "2026-10-21T16:41:00Z",
+     "summary": "Rollout of deployment web/storefront has not progressed for 15 minutes."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "KubeDeploymentRolloutStuck fired for deployment/storefront: Rollout of deployment web/storefront has not progressed for 15 minutes. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "web",
+      "owner": "deployment/storefront"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"\",\n  \"name\": \"storefront-84c5b9f7d-9kq2m\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/storefront\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"storefront-84c5b9f7d-tc7xw\",\n  \"node\": \"ip-10-0-2-31\",\n  \"owner\": \"deployment/storefront\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"storefront-6f9d4c8b2-x8vnr\",\n  \"node\": \"ip-10-0-3-44\",\n  \"owner\": \"deployment/storefront\",\n  \"phase\": \"Pending\",\n  \"ready\": \"0/1\",\n  \"reason\": \"ImagePullBackOff\",\n  \"restarts\": 0\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "1 of 3 pods look unhealthy. I'll describe the worst one, storefront-6f9d4c8b2-x8vnr, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "web",
+      "name": "storefront-6f9d4c8b2-x8vnr"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"PodScheduled\": \"True\",\n  \"Ready\": \"False\"\n },\n \"containers\": [\n  {\n   \"image\": \"registry.example.com/storefront:v2.31.O\",\n   \"name\": \"storefront\",\n   \"resources\": {\n    \"limits\": {\n     \"memory\": \"512Mi\"\n    }\n   },\n   \"state\": {\n    \"waiting\": {\n     \"message\": \"Back-off pulling image \\\"registry.example.com/storefront:v2.31.O\\\"\",\n     \"reason\": \"ImagePullBackOff\"\n    }\n   }\n  }\n ],\n \"name\": \"storefront-6f9d4c8b2-x8vnr\",\n \"namespace\": \"web\",\n \"node\": \"ip-10-0-3-44\",\n \"owner\": \"deployment/storefront\",\n \"phase\": \"Pending\",\n \"ready\": \"0/1\",\n \"restarts\": 0\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "web",
+      "object": "storefront-6f9d4c8b2-x8vnr"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 9,\n  \"last_seen\": \"2026-10-21T16:40:30Z\",\n  \"message\": \"Failed to pull image \\\"registry.example.com/storefront:v2.31.O\\\": rpc error: code = NotFound desc = manifest for registry.example.com/storefront:v2.31.O not found: manifest unknown\",\n  \"object\": \"pod/storefront-6f9d4c8b2-x8vnr\",\n  \"reason\": \"Failed\",\n  \"type\": \"Warning\"\n },\n {\n  \"count\": 9,\n  \"last_seen\": \"2026-10-21T16:40:30Z\",\n  \"message\": \"Error: ErrImagePull\",\n  \"object\": \"pod/storefront-6f9d4c8b2-x8vnr\",\n  \"reason\": \"Failed\",\n  \"type\": \"Warning\"\n },\n {\n  \"count\": 52,\n  \"last_seen\": \"2026-10-21T16:40:55Z\",\n  \"message\": \"Back-off pulling image \\\"registry.example.com/storefront:v2.31.O\\\"\",\n  \"object\": \"pod/storefront-6f9d4c8b2-x8vnr\",\n  \"reason\": \"BackOff\",\n  \"type\": \"Normal\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs and the rollout history of storefront, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "web",
+      "name": "storefront-6f9d4c8b2-x8vnr",
+      "previous": false,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [],\n \"note\": \"no current container instance\",\n \"pod\": \"storefront-6f9d4c8b2-x8vnr\",\n \"previous\": false\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "web",
+      "name": "storefront"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"history\": [\n  {\n   \"change_cause\": \"checkout button A/B test\",\n   \"image\": \"registry.example.com/storefront:v2.30.4\",\n   \"revision\": 31,\n   \"rolled_out_at\": \"2026-10-18T11:00:00Z\"\n  },\n  {\n   \"change_cause\": \"release v2.31.0\",\n   \"image\": \"registry.example.com/storefront:v2.31.O\",\n   \"revision\": 32,\n   \"rolled_out_at\": \"2026-10-21T16:25:40Z\"\n  }\n ],\n \"image\": \"registry.example.com/storefront:v2.31.O\",\n \"name\": \"storefront\",\n \"namespace\": \"web\",\n \"ready\": 2,\n \"replicas\": 2,\n \"strategy\": \"RollingUpdate maxUnavailable=0 maxSurge=1\",\n \"updated\": 1\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (ImagePullBackOff). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "input": {
+      "action": "rollback_deployment",
+      "namespace": "web",
+      "target": "storefront",
+      "params": {
+       "to_revision": 31
+      },
+      "rationale": "The new image tag does not exist; rolling back restores a pullable image and unblocks the rollout.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "rollback_deployment",
+     "namespace": "web",
+     "target": "storefront",
+     "params": {
+      "to_revision": 31
+     },
+     "rationale": "The new image tag does not exist; rolling back restores a pullable image and unblocks the rollout.",
+     "risk": "low",
+     "summary": "rollback_deployment web/storefront (to_revision=31)"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "rollback_deployment web/storefront (to_revision=31)"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "rollback_deployment web/storefront (to_revision=31)",
+     "verification": [
+      "2/2 replicas on storefront:v2.30.4",
+      "no ErrImagePull events in 5m"
+     ],
+     "symptoms_resolved": true,
+     "summary": "Rollout reverted to revision 31; the unpullable pod was removed and the alert cleared."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"rollback_deployment web/storefront (to_revision=31)\", \"verification\": [\"2/2 replicas on storefront:v2.30.4\", \"no ErrImagePull events in 5m\"], \"symptoms_resolved\": true, \"summary\": \"Rollout reverted to revision 31; the unpullable pod was removed and the alert cleared.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "The new pods cannot pull image registry.example.com/storefront:v2.31.O; the registry says the tag does not exist, so the rollout of revision 32 is stuck while old pods keep serving.",
+      "category": "ImagePullBackOff",
+      "confidence": 0.92,
+      "evidence": [
+       "1 of 3 pods unhealthy; worst is storefront-6f9d4c8b2-x8vnr (Pending, ready 0/1, 0 restarts, ImagePullBackOff)",
+       "container waiting: ImagePullBackOff",
+       "latest rollout: revision 32 at 2026-10-21T16:25:40Z (\"release v2.31.0\")",
+       "event: Failed to pull image \"registry.example.com/storefront:v2.31.O\": rpc error: code = NotFound desc = manifest for registry.example.com/storefront:v2.31.O not found: manifest unknown",
+       "after fix: 2/2 replicas on storefront:v2.30.4",
+       "after fix: no ErrImagePull events in 5m"
+      ],
+      "remediation": "Applied rollback_deployment web/storefront. Rollout reverted to revision 31; the unpullable pod was removed and the alert cleared.",
+      "follow_ups": [
+       "Fix the image tag in the release pipeline.",
+       "Validate that image tags exist in the registry before deploying (admission check or CI step)."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "The new pods cannot pull image registry.example.com/storefront:v2.31.O; the registry says the tag does not exist, so the rollout of revision 32 is stuck while old pods keep serving.",
+     "category": "ImagePullBackOff",
+     "confidence": 0.92,
+     "evidence": [
+      "1 of 3 pods unhealthy; worst is storefront-6f9d4c8b2-x8vnr (Pending, ready 0/1, 0 restarts, ImagePullBackOff)",
+      "container waiting: ImagePullBackOff",
+      "latest rollout: revision 32 at 2026-10-21T16:25:40Z (\"release v2.31.0\")",
+      "event: Failed to pull image \"registry.example.com/storefront:v2.31.O\": rpc error: code = NotFound desc = manifest for registry.example.com/storefront:v2.31.O not found: manifest unknown",
+      "after fix: 2/2 replicas on storefront:v2.30.4",
+      "after fix: no ErrImagePull events in 5m"
+     ],
+     "remediation": "Applied rollback_deployment web/storefront. Rollout reverted to revision 31; the unpullable pod was removed and the alert cleared.",
+     "follow_ups": [
+      "Fix the image tag in the release pipeline.",
+      "Validate that image tags exist in the registry before deploying (admission check or CI step)."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ },
+ {
+  "id": "bad-rollout-5xx",
+  "title": "search-api error rate jumped to 18% but every pod looks healthy",
+  "ground_truth": {
+   "category": "BadRollout",
+   "root_cause": "Revision 22 cut the ranking-svc timeout from 2000ms to 200ms with no retries, but ranking-svc's p99 is ~300ms, so about 1 in 5 searches times out and returns 502.",
+   "action": "rollback_deployment"
+  },
+  "pods": [
+   {
+    "name": "search-api-5f6c8d9b7-4hjkl",
+    "owner": "deployment/search-api",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-1-12"
+   },
+   {
+    "name": "search-api-5f6c8d9b7-p9w2e",
+    "owner": "deployment/search-api",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-2-31"
+   },
+   {
+    "name": "ranking-svc-7b8c9d6f5-m3n4b",
+    "owner": "deployment/ranking-svc",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-44"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "HighHTTP5xxRate",
+     "severity": "critical",
+     "namespace": "api",
+     "target": "deployment/search-api",
+     "fired_at": "2026-10-21T10:51:00Z",
+     "summary": "5xx rate for search-api is 18.2% (SLO: < 1%) for the last 8 minutes."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "HighHTTP5xxRate fired for deployment/search-api: 5xx rate for search-api is 18.2% (SLO: < 1%) for the last 8 minutes. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "api",
+      "owner": "deployment/search-api"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"\",\n  \"name\": \"search-api-5f6c8d9b7-4hjkl\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/search-api\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"search-api-5f6c8d9b7-p9w2e\",\n  \"node\": \"ip-10-0-2-31\",\n  \"owner\": \"deployment/search-api\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "All 2 pods are running and ready, so the problem may be above the pod level. I'll still describe one, search-api-5f6c8d9b7-4hjkl, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "api",
+      "name": "search-api-5f6c8d9b7-4hjkl"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"Ready\": \"True\"\n },\n \"containers\": [\n  {\n   \"env\": {\n    \"RANKING_TIMEOUT_MS\": \"200\",\n    \"RANKING_URL\": \"http://ranking-svc.api:8080\"\n   },\n   \"image\": \"registry.example.com/search-api:9.4.0\",\n   \"name\": \"search-api\",\n   \"resources\": {\n    \"limits\": {\n     \"memory\": \"1Gi\"\n    }\n   },\n   \"state\": {\n    \"running\": {\n     \"started_at\": \"2026-10-21T10:42:30Z\"\n    }\n   }\n  }\n ],\n \"name\": \"search-api-5f6c8d9b7-4hjkl\",\n \"namespace\": \"api\",\n \"node\": \"ip-10-0-1-12\",\n \"owner\": \"deployment/search-api\",\n \"phase\": \"Running\",\n \"ready\": \"1/1\",\n \"restarts\": 0\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "api",
+      "object": "search-api-5f6c8d9b7-4hjkl"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs and the rollout history of search-api, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "api",
+      "name": "search-api-5f6c8d9b7-4hjkl",
+      "previous": false,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [\n  \"10:50:01 INFO  GET /search?q=running+shoes 200 182ms\",\n  \"10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)\",\n  \"10:50:01 WARN  GET /search?q=rain+jacket 502 203ms\",\n  \"10:50:02 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)\",\n  \"10:50:02 WARN  GET /search?q=tent 502 201ms\",\n  \"10:50:02 INFO  GET /search?q=socks 200 96ms\"\n ],\n \"pod\": \"search-api-5f6c8d9b7-4hjkl\",\n \"previous\": false\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "api",
+      "name": "search-api"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"history\": [\n  {\n   \"change_cause\": \"RANKING_TIMEOUT_MS=2000, retries=2\",\n   \"image\": \"registry.example.com/search-api:9.3.2\",\n   \"revision\": 21,\n   \"rolled_out_at\": \"2026-10-09T13:00:00Z\"\n  },\n  {\n   \"change_cause\": \"fail fast: RANKING_TIMEOUT_MS=200, retries=0\",\n   \"image\": \"registry.example.com/search-api:9.4.0\",\n   \"revision\": 22,\n   \"rolled_out_at\": \"2026-10-21T10:42:30Z\"\n  }\n ],\n \"image\": \"registry.example.com/search-api:9.4.0\",\n \"name\": \"search-api\",\n \"namespace\": \"api\",\n \"ready\": 2,\n \"replicas\": 2,\n \"updated\": 2\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "The pods themselves look healthy, so I'll check service-level metrics: error rate and latency."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "input": {
+      "metric": "http_5xx_rate",
+      "namespace": "api",
+      "target": "search-api",
+      "window": "1h"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "content": "{\n \"metric\": \"http_5xx_rate\",\n \"points\": [\n  [\n   \"10:20\",\n   0.3\n  ],\n  [\n   \"10:30\",\n   0.4\n  ],\n  [\n   \"10:40\",\n   0.4\n  ],\n  [\n   \"10:43\",\n   12.6\n  ],\n  [\n   \"10:46\",\n   17.9\n  ],\n  [\n   \"10:50\",\n   18.2\n  ]\n ],\n \"summary\": {\n  \"last\": 18.2,\n  \"max\": 18.2,\n  \"min\": 0.3,\n  \"trend\": \"rising\"\n },\n \"target\": \"search-api\",\n \"unit\": \"%\",\n \"window\": \"1h\"\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_8",
+     "name": "query_metric",
+     "input": {
+      "metric": "http_p99_latency",
+      "namespace": "api",
+      "target": "search-api",
+      "window": "1h"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_8",
+     "name": "query_metric",
+     "content": "{\n \"metric\": \"http_p99_latency\",\n \"points\": [\n  [\n   \"10:20\",\n   410\n  ],\n  [\n   \"10:40\",\n   420\n  ],\n  [\n   \"10:43\",\n   205\n  ],\n  [\n   \"10:50\",\n   204\n  ]\n ],\n \"summary\": {\n  \"last\": 204,\n  \"max\": 420,\n  \"min\": 204,\n  \"trend\": \"falling\"\n },\n \"target\": \"search-api\",\n \"unit\": \"ms\",\n \"window\": \"1h\"\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (BadRollout). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "input": {
+      "action": "rollback_deployment",
+      "namespace": "api",
+      "target": "search-api",
+      "params": {
+       "to_revision": 21
+      },
+      "rationale": "Errors began with the latest rollout and pods are otherwise healthy; rolling back is the fastest safe fix.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "rollback_deployment",
+     "namespace": "api",
+     "target": "search-api",
+     "params": {
+      "to_revision": 21
+     },
+     "rationale": "Errors began with the latest rollout and pods are otherwise healthy; rolling back is the fastest safe fix.",
+     "risk": "low",
+     "summary": "rollback_deployment api/search-api (to_revision=21)"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "rollback_deployment api/search-api (to_revision=21)"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "rollback_deployment api/search-api (to_revision=21)",
+     "verification": [
+      "http_5xx_rate:search-api 0.4%",
+      "no 'upstream timeout' errors in the last 5m"
+     ],
+     "symptoms_resolved": true,
+     "summary": "Error rate dropped back under the SLO within 3 minutes of rolling back to revision 21."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"rollback_deployment api/search-api (to_revision=21)\", \"verification\": [\"http_5xx_rate:search-api 0.4%\", \"no 'upstream timeout' errors in the last 5m\"], \"symptoms_resolved\": true, \"summary\": \"Error rate dropped back under the SLO within 3 minutes of rolling back to revision 21.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_9",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "The error rate rose from 0.3% to 18.2% immediately after revision 22 (\"fail fast: RANKING_TIMEOUT_MS=200, retries=0\"). Logs show: 10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)",
+      "category": "BadRollout",
+      "confidence": 0.85,
+      "evidence": [
+       "0 of 2 pods unhealthy; worst is search-api-5f6c8d9b7-4hjkl (Running, ready 1/1, 0 restarts)",
+       "log: 10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)",
+       "log: 10:50:01 WARN  GET /search?q=rain+jacket 502 203ms",
+       "latest rollout: revision 22 at 2026-10-21T10:42:30Z (\"fail fast: RANKING_TIMEOUT_MS=200, retries=0\")",
+       "5xx rate 0.3% -> 18.2%, starting at 10:43, right after revision 22 rolled out",
+       "after fix: http_5xx_rate:search-api 0.4%",
+       "after fix: no 'upstream timeout' errors in the last 5m"
+      ],
+      "remediation": "Applied rollback_deployment api/search-api. Error rate dropped back under the SLO within 3 minutes of rolling back to revision 21.",
+      "follow_ups": [
+       "Restore a timeout above the upstream's p99 latency, with retries.",
+       "Gate rollouts on error-rate canary analysis."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_9",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "The error rate rose from 0.3% to 18.2% immediately after revision 22 (\"fail fast: RANKING_TIMEOUT_MS=200, retries=0\"). Logs show: 10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)",
+     "category": "BadRollout",
+     "confidence": 0.85,
+     "evidence": [
+      "0 of 2 pods unhealthy; worst is search-api-5f6c8d9b7-4hjkl (Running, ready 1/1, 0 restarts)",
+      "log: 10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)",
+      "log: 10:50:01 WARN  GET /search?q=rain+jacket 502 203ms",
+      "latest rollout: revision 22 at 2026-10-21T10:42:30Z (\"fail fast: RANKING_TIMEOUT_MS=200, retries=0\")",
+      "5xx rate 0.3% -> 18.2%, starting at 10:43, right after revision 22 rolled out",
+      "after fix: http_5xx_rate:search-api 0.4%",
+      "after fix: no 'upstream timeout' errors in the last 5m"
+     ],
+     "remediation": "Applied rollback_deployment api/search-api. Error rate dropped back under the SLO within 3 minutes of rolling back to revision 21.",
+     "follow_ups": [
+      "Restore a timeout above the upstream's p99 latency, with retries.",
+      "Gate rollouts on error-rate canary analysis."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ },
+ {
+  "id": "disk-pressure",
+  "title": "report-builder pods are being evicted from one node",
+  "ground_truth": {
+   "category": "NodePressure",
+   "root_cause": "Node ip-10-0-3-17 is at 93% disk usage (DiskPressure=True) because a debug-level log-shipper DaemonSet has written 61 GiB of container logs, so the kubelet keeps evicting pods there.",
+   "action": "cordon_node"
+  },
+  "pods": [
+   {
+    "name": "report-builder-7c9b5d8f6-a1b2c",
+    "owner": "deployment/report-builder",
+    "phase": "Failed",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-17"
+   },
+   {
+    "name": "report-builder-7c9b5d8f6-d3e4f",
+    "owner": "deployment/report-builder",
+    "phase": "Failed",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-17"
+   },
+   {
+    "name": "report-builder-7c9b5d8f6-g5h6i",
+    "owner": "deployment/report-builder",
+    "phase": "Running",
+    "ready": "1/1",
+    "restarts": 0,
+    "node": "ip-10-0-2-31"
+   },
+   {
+    "name": "report-builder-7c9b5d8f6-j7k8l",
+    "owner": "deployment/report-builder",
+    "phase": "Pending",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-17"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "KubePodNotReady",
+     "severity": "warning",
+     "namespace": "batch",
+     "target": "deployment/report-builder",
+     "fired_at": "2026-10-21T03:18:00Z",
+     "summary": "Pods of batch/report-builder have been evicted 6 times in 20 minutes."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "KubePodNotReady fired for deployment/report-builder: Pods of batch/report-builder have been evicted 6 times in 20 minutes. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "batch",
+      "owner": "deployment/report-builder"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"\",\n  \"name\": \"report-builder-7c9b5d8f6-a1b2c\",\n  \"node\": \"ip-10-0-3-17\",\n  \"owner\": \"deployment/report-builder\",\n  \"phase\": \"Failed\",\n  \"ready\": \"0/1\",\n  \"reason\": \"Evicted\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"report-builder-7c9b5d8f6-d3e4f\",\n  \"node\": \"ip-10-0-3-17\",\n  \"owner\": \"deployment/report-builder\",\n  \"phase\": \"Failed\",\n  \"ready\": \"0/1\",\n  \"reason\": \"Evicted\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"report-builder-7c9b5d8f6-g5h6i\",\n  \"node\": \"ip-10-0-2-31\",\n  \"owner\": \"deployment/report-builder\",\n  \"phase\": \"Running\",\n  \"ready\": \"1/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"report-builder-7c9b5d8f6-j7k8l\",\n  \"node\": \"ip-10-0-3-17\",\n  \"owner\": \"deployment/report-builder\",\n  \"phase\": \"Pending\",\n  \"ready\": \"0/1\",\n  \"reason\": \"ContainerCreating\",\n  \"restarts\": 0\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "3 of 4 pods look unhealthy. I'll describe the worst one, report-builder-7c9b5d8f6-a1b2c, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "batch",
+      "name": "report-builder-7c9b5d8f6-a1b2c"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"Ready\": \"False\"\n },\n \"containers\": [\n  {\n   \"image\": \"registry.example.com/report-builder:1.9.3\",\n   \"name\": \"report-builder\",\n   \"resources\": {\n    \"limits\": {\n     \"memory\": \"2Gi\"\n    }\n   },\n   \"state\": {\n    \"terminated\": {\n     \"exit_code\": 137,\n     \"reason\": \"Evicted\"\n    }\n   }\n  }\n ],\n \"message\": \"The node was low on resource: ephemeral-storage. Threshold quantity: 10%, available: 6.8%.\",\n \"name\": \"report-builder-7c9b5d8f6-a1b2c\",\n \"namespace\": \"batch\",\n \"node\": \"ip-10-0-3-17\",\n \"owner\": \"deployment/report-builder\",\n \"phase\": \"Failed\",\n \"ready\": \"0/1\",\n \"reason\": \"Evicted\",\n \"restarts\": 0\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "batch",
+      "object": "report-builder-7c9b5d8f6-a1b2c"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 1,\n  \"last_seen\": \"2026-10-21T03:12:40Z\",\n  \"message\": \"The node was low on resource: ephemeral-storage.\",\n  \"object\": \"pod/report-builder-7c9b5d8f6-a1b2c\",\n  \"reason\": \"Evicted\",\n  \"type\": \"Warning\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs and the rollout history of report-builder, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "batch",
+      "name": "report-builder-7c9b5d8f6-a1b2c",
+      "previous": false,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [],\n \"note\": \"no current container instance\",\n \"pod\": \"report-builder-7c9b5d8f6-a1b2c\",\n \"previous\": false\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "batch",
+      "name": "report-builder"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"history\": [\n  {\n   \"change_cause\": \"add inventory-aging report\",\n   \"image\": \"registry.example.com/report-builder:1.9.3\",\n   \"revision\": 4,\n   \"rolled_out_at\": \"2026-10-02T12:00:00Z\"\n  }\n ],\n \"image\": \"registry.example.com/report-builder:1.9.3\",\n \"name\": \"report-builder\",\n \"namespace\": \"batch\",\n \"ready\": 1,\n \"replicas\": 3,\n \"updated\": 3\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "The pod was evicted for low resources. I'll check node ip-10-0-3-17 and its disk usage."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_6",
+     "name": "get_node_status",
+     "input": {
+      "name": "ip-10-0-3-17"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_6",
+     "name": "get_node_status",
+     "content": "[\n {\n  \"allocatable\": {\n   \"cpu\": \"8\",\n   \"ephemeral-storage\": \"95Gi\",\n   \"memory\": \"31Gi\"\n  },\n  \"conditions\": {\n   \"DiskPressure\": \"True\",\n   \"MemoryPressure\": \"False\",\n   \"PIDPressure\": \"False\",\n   \"Ready\": \"True\"\n  },\n  \"name\": \"ip-10-0-3-17\",\n  \"notes\": \"/var/log/containers holds 61 GiB from a debug-level DaemonSet (log-shipper) since 01:40\",\n  \"taints\": [\n   \"node.kubernetes.io/disk-pressure:NoSchedule\"\n  ]\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "input": {
+      "metric": "node_disk_usage",
+      "namespace": "batch",
+      "target": "ip-10-0-3-17",
+      "window": "2h"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "query_metric",
+     "content": "{\n \"metric\": \"node_disk_usage\",\n \"points\": [\n  [\n   \"02:00\",\n   71\n  ],\n  [\n   \"02:30\",\n   79\n  ],\n  [\n   \"03:00\",\n   88\n  ],\n  [\n   \"03:15\",\n   93.2\n  ]\n ],\n \"summary\": {\n  \"last\": 93.2,\n  \"max\": 93.2,\n  \"min\": 71,\n  \"trend\": \"rising\"\n },\n \"target\": \"ip-10-0-3-17\",\n \"unit\": \"%\",\n \"window\": \"2h\"\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_8",
+     "name": "get_events",
+     "input": {
+      "namespace": "batch",
+      "object": "ip-10-0-3-17"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_8",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 6,\n  \"last_seen\": \"2026-10-21T03:17:00Z\",\n  \"message\": \"Attempting to reclaim ephemeral-storage\",\n  \"namespace\": \"batch\",\n  \"object\": \"node/ip-10-0-3-17\",\n  \"reason\": \"EvictionThresholdMet\",\n  \"type\": \"Warning\"\n },\n {\n  \"count\": 4,\n  \"last_seen\": \"2026-10-21T03:16:30Z\",\n  \"message\": \"Failed to garbage collect required amount of images. Attempted to free 18.2 GB, but only found 1.1 GB eligible to free.\",\n  \"namespace\": \"batch\",\n  \"object\": \"node/ip-10-0-3-17\",\n  \"reason\": \"FreeDiskSpaceFailed\",\n  \"type\": \"Warning\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (NodePressure). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_9",
+     "name": "propose_remediation",
+     "input": {
+      "action": "cordon_node",
+      "namespace": "batch",
+      "target": "ip-10-0-3-17",
+      "params": {},
+      "rationale": "Cordoning ip-10-0-3-17 stops new pods landing on the full disk; healthy nodes have plenty of space.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "cordon_node",
+     "namespace": "batch",
+     "target": "ip-10-0-3-17",
+     "params": {},
+     "rationale": "Cordoning ip-10-0-3-17 stops new pods landing on the full disk; healthy nodes have plenty of space.",
+     "risk": "low",
+     "summary": "cordon_node batch/ip-10-0-3-17"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "cordon_node batch/ip-10-0-3-17"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "cordon_node batch/ip-10-0-3-17",
+     "verification": [
+      "3/3 report-builder replicas ready on ip-10-0-2-31 and ip-10-0-1-12",
+      "no new Evicted events in 10m"
+     ],
+     "symptoms_resolved": true,
+     "summary": "ip-10-0-3-17 is cordoned; report-builder pods rescheduled onto healthy nodes and are running."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_9",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"cordon_node batch/ip-10-0-3-17\", \"verification\": [\"3/3 report-builder replicas ready on ip-10-0-2-31 and ip-10-0-1-12\", \"no new Evicted events in 10m\"], \"symptoms_resolved\": true, \"summary\": \"ip-10-0-3-17 is cordoned; report-builder pods rescheduled onto healthy nodes and are running.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_10",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "Node ip-10-0-3-17 is under disk pressure (93.2% used, DiskPressure=True), so the kubelet keeps evicting report-builder pods scheduled there. The workload itself is healthy on other nodes.",
+      "category": "NodePressure",
+      "confidence": 0.88,
+      "evidence": [
+       "3 of 4 pods unhealthy; worst is report-builder-7c9b5d8f6-a1b2c (Failed, ready 0/1, 0 restarts, Evicted)",
+       "latest rollout: revision 4 at 2026-10-02T12:00:00Z (\"add inventory-aging report\")",
+       "node ip-10-0-3-17: DiskPressure=True, disk usage 93.2% and rising",
+       "node note: /var/log/containers holds 61 GiB from a debug-level DaemonSet (log-shipper) since 01:40",
+       "event on ip-10-0-3-17: EvictionThresholdMet: Attempting to reclaim ephemeral-storage",
+       "after fix: 3/3 report-builder replicas ready on ip-10-0-2-31 and ip-10-0-1-12",
+       "after fix: no new Evicted events in 10m"
+      ],
+      "remediation": "Applied cordon_node batch/ip-10-0-3-17. ip-10-0-3-17 is cordoned; report-builder pods rescheduled onto healthy nodes and are running.",
+      "follow_ups": [
+       "Clean up container logs on the node and set log rotation limits.",
+       "Lower the log-shipper DaemonSet log level.",
+       "Alert on node disk usage above 80%."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_10",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "Node ip-10-0-3-17 is under disk pressure (93.2% used, DiskPressure=True), so the kubelet keeps evicting report-builder pods scheduled there. The workload itself is healthy on other nodes.",
+     "category": "NodePressure",
+     "confidence": 0.88,
+     "evidence": [
+      "3 of 4 pods unhealthy; worst is report-builder-7c9b5d8f6-a1b2c (Failed, ready 0/1, 0 restarts, Evicted)",
+      "latest rollout: revision 4 at 2026-10-02T12:00:00Z (\"add inventory-aging report\")",
+      "node ip-10-0-3-17: DiskPressure=True, disk usage 93.2% and rising",
+      "node note: /var/log/containers holds 61 GiB from a debug-level DaemonSet (log-shipper) since 01:40",
+      "event on ip-10-0-3-17: EvictionThresholdMet: Attempting to reclaim ephemeral-storage",
+      "after fix: 3/3 report-builder replicas ready on ip-10-0-2-31 and ip-10-0-1-12",
+      "after fix: no new Evicted events in 10m"
+     ],
+     "remediation": "Applied cordon_node batch/ip-10-0-3-17. ip-10-0-3-17 is cordoned; report-builder pods rescheduled onto healthy nodes and are running.",
+     "follow_ups": [
+      "Clean up container logs on the node and set log rotation limits.",
+      "Lower the log-shipper DaemonSet log level.",
+      "Alert on node disk usage above 80%."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ },
+ {
+  "id": "readiness-probe",
+  "title": "session-svc pods are running but never become ready",
+  "ground_truth": {
+   "category": "ProbeFailure",
+   "root_cause": "Revision 5 moved the readiness probe to /health/ready, an endpoint session-svc does not serve (it returns 404), so no pod ever becomes ready and the service has no endpoints.",
+   "action": "rollback_deployment"
+  },
+  "pods": [
+   {
+    "name": "session-svc-9d8c7b6a5-r2d2x",
+    "owner": "deployment/session-svc",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-1-12"
+   },
+   {
+    "name": "session-svc-9d8c7b6a5-c3p0z",
+    "owner": "deployment/session-svc",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-2-31"
+   },
+   {
+    "name": "session-svc-9d8c7b6a5-bb8yy",
+    "owner": "deployment/session-svc",
+    "phase": "Running",
+    "ready": "0/1",
+    "restarts": 0,
+    "node": "ip-10-0-3-44"
+   }
+  ],
+  "events": [
+   {
+    "kind": "alert",
+    "data": {
+     "name": "KubeDeploymentReplicasMismatch",
+     "severity": "critical",
+     "namespace": "auth",
+     "target": "deployment/session-svc",
+     "fired_at": "2026-10-21T12:33:00Z",
+     "summary": "Deployment auth/session-svc has 0 of 3 replicas ready; logins are failing."
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "KubeDeploymentReplicasMismatch fired for deployment/session-svc: Deployment auth/session-svc has 0 of 3 replicas ready; logins are failing. First I'll see what state its pods are in."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "input": {
+      "namespace": "auth",
+      "owner": "deployment/session-svc"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_1",
+     "name": "list_pods",
+     "content": "[\n {\n  \"last_termination\": \"\",\n  \"name\": \"session-svc-9d8c7b6a5-r2d2x\",\n  \"node\": \"ip-10-0-1-12\",\n  \"owner\": \"deployment/session-svc\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"session-svc-9d8c7b6a5-c3p0z\",\n  \"node\": \"ip-10-0-2-31\",\n  \"owner\": \"deployment/session-svc\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n },\n {\n  \"last_termination\": \"\",\n  \"name\": \"session-svc-9d8c7b6a5-bb8yy\",\n  \"node\": \"ip-10-0-3-44\",\n  \"owner\": \"deployment/session-svc\",\n  \"phase\": \"Running\",\n  \"ready\": \"0/1\",\n  \"reason\": \"\",\n  \"restarts\": 0\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "3 of 3 pods look unhealthy. I'll describe the worst one, session-svc-9d8c7b6a5-r2d2x, and pull its recent events at the same time."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "input": {
+      "namespace": "auth",
+      "name": "session-svc-9d8c7b6a5-r2d2x"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_2",
+     "name": "describe_pod",
+     "content": "{\n \"conditions\": {\n  \"ContainersReady\": \"False\",\n  \"Ready\": \"False\"\n },\n \"containers\": [\n  {\n   \"image\": \"registry.example.com/session-svc:5.0.1\",\n   \"name\": \"session-svc\",\n   \"readiness_probe\": {\n    \"failure_threshold\": 3,\n    \"http_get\": \"/health/ready\",\n    \"period_seconds\": 5,\n    \"port\": 8080\n   },\n   \"resources\": {\n    \"limits\": {\n     \"memory\": \"256Mi\"\n    }\n   },\n   \"state\": {\n    \"running\": {\n     \"started_at\": \"2026-10-21T12:21:10Z\"\n    }\n   }\n  }\n ],\n \"name\": \"session-svc-9d8c7b6a5-r2d2x\",\n \"namespace\": \"auth\",\n \"node\": \"ip-10-0-1-12\",\n \"owner\": \"deployment/session-svc\",\n \"phase\": \"Running\",\n \"ready\": \"0/1\",\n \"restarts\": 0\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "input": {
+      "namespace": "auth",
+      "object": "session-svc-9d8c7b6a5-r2d2x"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_3",
+     "name": "get_events",
+     "content": "[\n {\n  \"count\": 141,\n  \"last_seen\": \"2026-10-21T12:33:01Z\",\n  \"message\": \"Readiness probe failed: HTTP probe failed with statuscode: 404\",\n  \"object\": \"pod/session-svc-9d8c7b6a5-r2d2x\",\n  \"reason\": \"Unhealthy\",\n  \"type\": \"Warning\"\n }\n]",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Next, the logs and the rollout history of session-svc, to see whether a recent change lines up with this."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "input": {
+      "namespace": "auth",
+      "name": "session-svc-9d8c7b6a5-r2d2x",
+      "previous": false,
+      "tail": 50
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_4",
+     "name": "get_pod_logs",
+     "content": "{\n \"lines\": [\n  \"12:21:11 INFO  session-svc 5.0.1 listening on :8080\",\n  \"12:21:11 INFO  redis connected (sessions db 3)\",\n  \"12:32:50 INFO  GET /healthz 200 1ms\",\n  \"12:32:51 WARN  GET /health/ready 404 0ms (no route)\",\n  \"12:32:56 WARN  GET /health/ready 404 0ms (no route)\",\n  \"12:33:01 WARN  GET /health/ready 404 0ms (no route)\"\n ],\n \"pod\": \"session-svc-9d8c7b6a5-r2d2x\",\n \"previous\": false\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "input": {
+      "namespace": "auth",
+      "name": "session-svc"
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_5",
+     "name": "get_deployment",
+     "content": "{\n \"history\": [\n  {\n   \"change_cause\": \"redis TLS\",\n   \"image\": \"registry.example.com/session-svc:5.0.1\",\n   \"revision\": 4,\n   \"rolled_out_at\": \"2026-10-11T09:00:00Z\"\n  },\n  {\n   \"change_cause\": \"standardise probes: readiness path /healthz -> /health/ready\",\n   \"image\": \"registry.example.com/session-svc:5.0.1\",\n   \"revision\": 5,\n   \"rolled_out_at\": \"2026-10-21T12:21:00Z\"\n  }\n ],\n \"image\": \"registry.example.com/session-svc:5.0.1\",\n \"name\": \"session-svc\",\n \"namespace\": \"auth\",\n \"ready\": 0,\n \"replicas\": 3,\n \"strategy\": \"RollingUpdate maxUnavailable=100%\",\n \"updated\": 3\n}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Root cause found (ProbeFailure). I'm proposing one fix; nothing changes until a human approves it."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "input": {
+      "action": "rollback_deployment",
+      "namespace": "auth",
+      "target": "session-svc",
+      "params": {
+       "to_revision": 4
+      },
+      "rationale": "The previous revision probed an endpoint the app serves; rolling back makes pods ready again.",
+      "risk": "low"
+     }
+    }
+   },
+   {
+    "kind": "approval_request",
+    "data": {
+     "action": "rollback_deployment",
+     "namespace": "auth",
+     "target": "session-svc",
+     "params": {
+      "to_revision": 4
+     },
+     "rationale": "The previous revision probed an endpoint the app serves; rolling back makes pods ready again.",
+     "risk": "low",
+     "summary": "rollback_deployment auth/session-svc (to_revision=4)"
+    }
+   },
+   {
+    "kind": "approval",
+    "data": {
+     "approved": true,
+     "summary": "rollback_deployment auth/session-svc (to_revision=4)"
+    }
+   },
+   {
+    "kind": "action_result",
+    "data": {
+     "applied": true,
+     "change": "rollback_deployment auth/session-svc (to_revision=4)",
+     "verification": [
+      "3/3 replicas ready",
+      "logins succeeding: 5xx rate 0.1%"
+     ],
+     "symptoms_resolved": true,
+     "summary": "Rolled back to revision 4; readiness probes on /healthz pass and all 3 replicas are ready."
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_6",
+     "name": "propose_remediation",
+     "content": "{\"approved\": true, \"result\": {\"applied\": true, \"change\": \"rollback_deployment auth/session-svc (to_revision=4)\", \"verification\": [\"3/3 replicas ready\", \"logins succeeding: 5xx rate 0.1%\"], \"symptoms_resolved\": true, \"summary\": \"Rolled back to revision 4; readiness probes on /healthz pass and all 3 replicas are ready.\"}}",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "thought",
+    "data": {
+     "text": "Writing up the incident report."
+    }
+   },
+   {
+    "kind": "tool_call",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "input": {
+      "root_cause": "Pods are running but fail their readiness probe on /health/ready, which the app answers with 404. Revision 5 changed the probe (\"standardise probes: readiness path /healthz -> /health/ready\").",
+      "category": "ProbeFailure",
+      "confidence": 0.9,
+      "evidence": [
+       "3 of 3 pods unhealthy; worst is session-svc-9d8c7b6a5-r2d2x (Running, ready 0/1, 0 restarts)",
+       "log: 12:32:51 WARN  GET /health/ready 404 0ms (no route)",
+       "log: 12:32:56 WARN  GET /health/ready 404 0ms (no route)",
+       "latest rollout: revision 5 at 2026-10-21T12:21:00Z (\"standardise probes: readiness path /healthz -> /health/ready\")",
+       "readiness probe: GET /health/ready on port 8080",
+       "after fix: 3/3 replicas ready",
+       "after fix: logins succeeding: 5xx rate 0.1%"
+      ],
+      "remediation": "Applied rollback_deployment auth/session-svc. Rolled back to revision 4; readiness probes on /healthz pass and all 3 replicas are ready.",
+      "follow_ups": [
+       "Add the new readiness endpoint to the app before switching probes.",
+       "Use maxUnavailable < 100% so a bad probe can't take every replica out at once."
+      ]
+     }
+    }
+   },
+   {
+    "kind": "tool_result",
+    "data": {
+     "id": "rule_7",
+     "name": "submit_report",
+     "content": "Report received.",
+     "is_error": false
+    }
+   },
+   {
+    "kind": "report",
+    "data": {
+     "root_cause": "Pods are running but fail their readiness probe on /health/ready, which the app answers with 404. Revision 5 changed the probe (\"standardise probes: readiness path /healthz -> /health/ready\").",
+     "category": "ProbeFailure",
+     "confidence": 0.9,
+     "evidence": [
+      "3 of 3 pods unhealthy; worst is session-svc-9d8c7b6a5-r2d2x (Running, ready 0/1, 0 restarts)",
+      "log: 12:32:51 WARN  GET /health/ready 404 0ms (no route)",
+      "log: 12:32:56 WARN  GET /health/ready 404 0ms (no route)",
+      "latest rollout: revision 5 at 2026-10-21T12:21:00Z (\"standardise probes: readiness path /healthz -> /health/ready\")",
+      "readiness probe: GET /health/ready on port 8080",
+      "after fix: 3/3 replicas ready",
+      "after fix: logins succeeding: 5xx rate 0.1%"
+     ],
+     "remediation": "Applied rollback_deployment auth/session-svc. Rolled back to revision 4; readiness probes on /healthz pass and all 3 replicas are ready.",
+     "follow_ups": [
+      "Add the new readiness endpoint to the app before switching probes.",
+      "Use maxUnavailable < 100% so a bad probe can't take every replica out at once."
+     ],
+     "status": "resolved"
+    }
+   }
+  ]
+ }
+]</script>
+<script>
+(() => {
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const $ = s => document.querySelector(s);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SHORT = {'oom-kill':'OOMKilled','crashloop-config':'Crash loop','image-pull':'Image pull','bad-rollout-5xx':'Bad rollout','disk-pressure':'Disk pressure','readiness-probe':'Readiness probe'};
+
+const S = { s: 0, i: 0, playing: !reduce, fast: false, timer: null, waiting: false, decision: null, skipping: false };
+const trace = $('#trace');
+
+function tabs() {
+  $('#tabs').innerHTML = DATA.map((d, k) => `<button class="tab" role="tab" type="button" aria-selected="${k === S.s}" data-k="${k}"><b>${esc(SHORT[d.id] || d.id)}</b><small>${esc(d.title)}</small></button>`).join('');
+  $('#tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => load(+b.dataset.k)));
+}
+
+function cluster(d) {
+  const alert = d.events[0].data;
+  const owner = alert.target;
+  $('#ns').textContent = 'namespace ' + alert.namespace;
+  $('#alert').innerHTML = `<div class="name"><b>▲ ${esc(alert.name)}</b><span class="sev ${esc(alert.severity)}">${esc(alert.severity)}</span></div>
+    <p>${esc(alert.summary)}</p><span class="tgt">${esc(owner)}</span>`;
+  const byNode = {};
+  d.pods.forEach(p => (byNode[p.node || 'unscheduled'] ||= []).push(p));
+  $('#nodes').innerHTML = Object.entries(byNode).map(([node, pods]) => `
+    <div class="node" data-node="${esc(node)}"><div class="node-h"><span>node ${esc(node)}</span><span>${pods.length} pod${pods.length > 1 ? 's' : ''}</span></div>
+    <div class="pods">${pods.map(p => {
+      const notReady = p.ready.startsWith('0/');
+      const cls = p.phase === 'Pending' || p.phase === 'Failed' ? 'pending' : notReady ? 'notready' : '';
+      return `<div class="pod ${cls} ${p.owner !== owner ? 'other' : ''}" data-pod="${esc(p.name)}" data-owner="${esc(p.owner)}" title="${esc(p.name)} · ${esc(p.phase)} · ready ${esc(p.ready)} · ${p.restarts} restarts"><i></i><span>${esc(p.name)}</span>${p.restarts ? `<em>↻${p.restarts}</em>` : ''}</div>`;
+    }).join('')}</div></div>`).join('');
+}
+
+function highlight(input) {
+  document.querySelectorAll('.pod.look').forEach(el => el.classList.remove('look'));
+  document.querySelectorAll('.node.hot').forEach(el => el.classList.remove('hot'));
+  if (!input) return;
+  if (input.name) document.querySelectorAll(`.pod[data-pod="${CSS.escape(input.name)}"]`).forEach(el => el.classList.add('look'));
+  if (input.owner) document.querySelectorAll(`.pod[data-owner="${CSS.escape(input.owner)}"]`).forEach(el => el.classList.add('look'));
+  const node = input.name || input.target;
+  if (node) document.querySelectorAll(`.node[data-node="${CSS.escape(node)}"]`).forEach(el => el.classList.add('hot'));
+}
+
+function add(html) {
+  const div = document.createElement('div');
+  div.className = 'ev';
+  div.innerHTML = html;
+  trace.appendChild(div);
+  trace.scrollTop = trace.scrollHeight;
+  return div;
+}
+
+const HIDE_ARGS = ['evidence', 'follow_ups', 'root_cause', 'rationale', 'remediation'];
+function render(ev) {
+  const d = ev.data;
+  switch (ev.kind) {
+    case 'thought': add(`<div class="thought"><span>${esc(d.text)}</span></div>`); break;
+    case 'tool_call': {
+      const args = Object.entries(d.input).filter(([k]) => !HIDE_ARGS.includes(k)).map(([k, v]) => `${k}=${esc(JSON.stringify(v))}`).join(', ');
+      add(`<div class="call">→ ${esc(d.name)}<small>(${args})</small></div>`);
+      if (d.name !== 'submit_report') highlight(d.input);
+      break;
+    }
+    case 'tool_result':
+      if (d.name === 'propose_remediation' || d.name === 'submit_report') break;
+      add(`<details class="result ${d.is_error ? 'err' : ''}"><summary>${esc(d.content.replace(/\s+/g, ' ').slice(0, 150))}</summary><pre>${esc(d.content)}</pre></details>`);
+      break;
+    case 'approval_request': {
+      S.waiting = true;
+      stop();
+      const card = add(`<div class="approve"><h3>⚑ Approval needed · risk ${esc(d.risk)}</h3><div class="what">${esc(d.summary)}</div><p>${esc(d.rationale)}</p>
+        <div class="btns"><button class="btn yes" type="button">Approve fix</button><button class="btn no" type="button">Reject</button></div></div>`);
+      card.querySelector('.yes').focus({ preventScroll: true });
+      card.querySelector('.yes').onclick = () => decide(true, card, d);
+      card.querySelector('.no').onclick = () => decide(false, card, d);
+      break;
+    }
+    case 'approval': break; // rendered by decide()
+    case 'action_result':
+      document.querySelectorAll('.pod.notready, .pod.pending').forEach(el => { if (!el.classList.contains('other')) { el.classList.remove('notready', 'pending'); el.classList.add('fixed'); } });
+      add(`<div class="outcome"><b>${esc(d.summary)}</b><ul>${(d.verification || []).map(v => `<li>· ${esc(v)}</li>`).join('')}</ul></div>`);
+      break;
+    case 'report': report(d); highlight(null); break;
+  }
+}
+
+function decide(yes, card, d) {
+  S.waiting = false;
+  S.decision = yes;
+  card.querySelector('.btns').outerHTML = `<div class="decided" style="color:${yes ? 'var(--ok)' : 'var(--warn)'}">${yes ? '✓ Approved by you' : '✗ Rejected by you; nothing was changed'}</div>`;
+  if (!yes) add(`<div class="outcome neg"><b>No change applied.</b><ul><li>· The agent will report its diagnosis and leave the fix to a human.</li></ul></div>`);
+  play();
+}
+
+function report(r) {
+  const d = DATA[S.s];
+  let status = r.status, remediation = r.remediation, evidence = r.evidence;
+  if (S.decision === false) {
+    status = 'awaiting_human';
+    const req = d.events.find(e => e.kind === 'approval_request');
+    remediation = `Proposed ${req ? req.data.summary : 'a fix'}; not applied because it was rejected.`;
+    evidence = evidence.filter(e => !e.startsWith('after fix'));
+  }
+  const ok = r.category === d.ground_truth.category;
+  const el = $('#report');
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="rep-top"><span class="eyebrow">Incident report</span><span class="chip ${esc(status)}">${esc(status.replace('_', ' '))}</span><span class="chip">${esc(r.category)}</span>
+      <span class="conf">confidence <i><b style="width:${Math.round(r.confidence * 100)}%"></b></i> ${Math.round(r.confidence * 100)}%</span></div>
+    <h2>${esc(r.root_cause)}</h2>
+    <div class="cols">
+      <div><h3>Evidence</h3><ul>${evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>
+      <div><h3>Remediation</h3><p>${esc(remediation)}</p><h3 style="margin-top:18px">Follow-ups</h3><ul>${r.follow_ups.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
+      <div><h3>Scored against ground truth</h3><p class="truth ${ok ? '' : 'miss'}">${ok ? '✓' : '✗'} expected ${esc(d.ground_truth.category)}, diagnosed ${esc(r.category)}</p><p style="margin-top:8px">${esc(d.ground_truth.root_cause)}</p></div>
+    </div>`;
+}
+
+function next() {
+  const events = DATA[S.s].events;
+  if (S.waiting || S.i >= events.length) { stop(); setPlayLabel(); return false; }
+  const ev = events[S.i++];
+  if (S.decision === false && (ev.kind === 'action_result' || (ev.kind === 'tool_result' && ev.data.name === 'propose_remediation'))) return next();
+  render(ev);
+  return true;
+}
+
+function delay(kind) {
+  const base = { thought: 1300, tool_call: 650, tool_result: 450, action_result: 1400, alert: 300 }[kind] ?? 600;
+  return S.fast ? base / 2.5 : base;
+}
+
+function schedule() {
+  clearTimeout(S.timer);
+  if (!S.playing || S.waiting) return;
+  const events = DATA[S.s].events;
+  if (S.i >= events.length) { S.playing = false; setPlayLabel(); return; }
+  S.timer = setTimeout(() => { if (next()) schedule(); }, delay(events[S.i].kind));
+}
+function play() { S.playing = true; setPlayLabel(); schedule(); }
+function stop() { clearTimeout(S.timer); }
+function setPlayLabel() {
+  const done = S.i >= DATA[S.s].events.length;
+  const b = $('#play');
+  b.textContent = done ? 'Replay' : S.playing && !S.waiting ? 'Pause' : 'Play';
+  b.setAttribute('aria-pressed', String(S.playing && !done));
+}
+
+function load(k) {
+  stop();
+  Object.assign(S, { s: k, i: 1, waiting: false, decision: null, playing: !reduce });
+  tabs();
+  cluster(DATA[k]);
+  trace.innerHTML = '';
+  $('#report').hidden = true;
+  if (reduce) add('<p class="idle">Press Step to walk through the investigation one action at a time, or Play to run it.</p>');
+  setPlayLabel();
+  schedule();
+}
+
+$('#play').onclick = () => {
+  if (S.i >= DATA[S.s].events.length) return load(S.s);
+  if (S.playing) { S.playing = false; stop(); setPlayLabel(); } else play();
+};
+$('#step').onclick = () => { S.playing = false; stop(); next(); setPlayLabel(); };
+$('#fast').onclick = e => { S.fast = !S.fast; e.currentTarget.setAttribute('aria-pressed', String(S.fast)); schedule(); };
+$('#restart').onclick = () => load(S.s);
+
+const hash = location.hash.slice(1);
+const start = Math.max(0, DATA.findIndex(d => d.id === hash));
+load(start);
+})();
+</script>
+
+</html>

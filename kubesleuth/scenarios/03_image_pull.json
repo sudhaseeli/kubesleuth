@@ -1,0 +1,77 @@
+{
+  "id": "image-pull",
+  "title": "storefront rollout is stuck halfway",
+  "alert": {
+    "name": "KubeDeploymentRolloutStuck",
+    "severity": "warning",
+    "namespace": "web",
+    "target": "deployment/storefront",
+    "fired_at": "2026-10-21T16:41:00Z",
+    "summary": "Rollout of deployment web/storefront has not progressed for 15 minutes."
+  },
+  "pods": [
+    {
+      "name": "storefront-84c5b9f7d-9kq2m", "namespace": "web", "owner": "deployment/storefront",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-1-12",
+      "containers": [{"name": "storefront", "image": "registry.example.com/storefront:v2.30.4", "state": {"running": {"started_at": "2026-10-18T11:00:00Z"}}, "resources": {"limits": {"memory": "512Mi"}}}],
+      "conditions": {"Ready": "True"}
+    },
+    {
+      "name": "storefront-84c5b9f7d-tc7xw", "namespace": "web", "owner": "deployment/storefront",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-2-31",
+      "containers": [{"name": "storefront", "image": "registry.example.com/storefront:v2.30.4", "state": {"running": {"started_at": "2026-10-18T11:00:00Z"}}, "resources": {"limits": {"memory": "512Mi"}}}],
+      "conditions": {"Ready": "True"}
+    },
+    {
+      "name": "storefront-6f9d4c8b2-x8vnr", "namespace": "web", "owner": "deployment/storefront",
+      "phase": "Pending", "ready": "0/1", "restarts": 0, "node": "ip-10-0-3-44",
+      "containers": [{
+        "name": "storefront", "image": "registry.example.com/storefront:v2.31.O",
+        "state": {"waiting": {"reason": "ImagePullBackOff", "message": "Back-off pulling image \"registry.example.com/storefront:v2.31.O\""}},
+        "resources": {"limits": {"memory": "512Mi"}}
+      }],
+      "conditions": {"Ready": "False", "PodScheduled": "True"}
+    }
+  ],
+  "logs": {
+    "storefront-6f9d4c8b2-x8vnr": {"current": null, "previous": null},
+    "storefront-84c5b9f7d-9kq2m": {"current": "16:40:12 INFO GET / 200 34ms\n16:40:13 INFO GET /cart 200 41ms", "previous": null}
+  },
+  "events": [
+    {"type": "Warning", "reason": "Failed", "object": "pod/storefront-6f9d4c8b2-x8vnr", "message": "Failed to pull image \"registry.example.com/storefront:v2.31.O\": rpc error: code = NotFound desc = manifest for registry.example.com/storefront:v2.31.O not found: manifest unknown", "count": 9, "last_seen": "2026-10-21T16:40:30Z"},
+    {"type": "Warning", "reason": "Failed", "object": "pod/storefront-6f9d4c8b2-x8vnr", "message": "Error: ErrImagePull", "count": 9, "last_seen": "2026-10-21T16:40:30Z"},
+    {"type": "Normal", "reason": "BackOff", "object": "pod/storefront-6f9d4c8b2-x8vnr", "message": "Back-off pulling image \"registry.example.com/storefront:v2.31.O\"", "count": 52, "last_seen": "2026-10-21T16:40:55Z"},
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/storefront", "message": "Scaled up replica set storefront-6f9d4c8b2 to 1", "count": 1, "last_seen": "2026-10-21T16:25:40Z"}
+  ],
+  "deployments": [
+    {
+      "name": "storefront", "namespace": "web", "replicas": 2, "ready": 2, "updated": 1,
+      "image": "registry.example.com/storefront:v2.31.O",
+      "strategy": "RollingUpdate maxUnavailable=0 maxSurge=1",
+      "history": [
+        {"revision": 31, "image": "registry.example.com/storefront:v2.30.4", "change_cause": "checkout button A/B test", "rolled_out_at": "2026-10-18T11:00:00Z"},
+        {"revision": 32, "image": "registry.example.com/storefront:v2.31.O", "change_cause": "release v2.31.0", "rolled_out_at": "2026-10-21T16:25:40Z"}
+      ]
+    }
+  ],
+  "metrics": {
+    "http_5xx_rate:storefront": {"unit": "%", "points": [["16:00", 0.1], ["16:30", 0.1], ["16:40", 0.1]]},
+    "restarts:storefront": {"unit": "count", "points": [["16:00", 0], ["16:40", 0]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-3-44", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "8", "memory": "31Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [{"action": "rollback_deployment", "target": "storefront"}],
+    "after": {
+      "summary": "Rollout reverted to revision 31; the unpullable pod was removed and the alert cleared.",
+      "checks": ["2/2 replicas on storefront:v2.30.4", "no ErrImagePull events in 5m"]
+    },
+    "wrong_fix": "New pod still cannot pull storefront:v2.31.O (manifest unknown)."
+  },
+  "ground_truth": {
+    "category": "ImagePullBackOff",
+    "root_cause": "Revision 32 references image tag v2.31.O (letter O instead of zero), which does not exist in the registry, so the new pod cannot start and the rollout stalls.",
+    "action": "rollback_deployment"
+  }
+}

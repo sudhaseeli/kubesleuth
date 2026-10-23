@@ -1,0 +1,81 @@
+{
+  "id": "disk-pressure",
+  "title": "report-builder pods are being evicted from one node",
+  "alert": {
+    "name": "KubePodNotReady",
+    "severity": "warning",
+    "namespace": "batch",
+    "target": "deployment/report-builder",
+    "fired_at": "2026-10-21T03:18:00Z",
+    "summary": "Pods of batch/report-builder have been evicted 6 times in 20 minutes."
+  },
+  "pods": [
+    {
+      "name": "report-builder-7c9b5d8f6-a1b2c", "namespace": "batch", "owner": "deployment/report-builder",
+      "phase": "Failed", "ready": "0/1", "restarts": 0, "node": "ip-10-0-3-17", "reason": "Evicted",
+      "message": "The node was low on resource: ephemeral-storage. Threshold quantity: 10%, available: 6.8%.",
+      "containers": [{"name": "report-builder", "image": "registry.example.com/report-builder:1.9.3", "state": {"terminated": {"reason": "Evicted", "exit_code": 137}}, "resources": {"limits": {"memory": "2Gi"}}}],
+      "conditions": {"Ready": "False"}
+    },
+    {
+      "name": "report-builder-7c9b5d8f6-d3e4f", "namespace": "batch", "owner": "deployment/report-builder",
+      "phase": "Failed", "ready": "0/1", "restarts": 0, "node": "ip-10-0-3-17", "reason": "Evicted",
+      "message": "The node was low on resource: ephemeral-storage. Threshold quantity: 10%, available: 7.1%.",
+      "containers": [{"name": "report-builder", "image": "registry.example.com/report-builder:1.9.3", "state": {"terminated": {"reason": "Evicted", "exit_code": 137}}, "resources": {"limits": {"memory": "2Gi"}}}],
+      "conditions": {"Ready": "False"}
+    },
+    {
+      "name": "report-builder-7c9b5d8f6-g5h6i", "namespace": "batch", "owner": "deployment/report-builder",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-2-31",
+      "containers": [{"name": "report-builder", "image": "registry.example.com/report-builder:1.9.3", "state": {"running": {"started_at": "2026-10-21T03:05:00Z"}}, "resources": {"limits": {"memory": "2Gi"}}}],
+      "conditions": {"Ready": "True"}
+    },
+    {
+      "name": "report-builder-7c9b5d8f6-j7k8l", "namespace": "batch", "owner": "deployment/report-builder",
+      "phase": "Pending", "ready": "0/1", "restarts": 0, "node": "ip-10-0-3-17",
+      "containers": [{"name": "report-builder", "image": "registry.example.com/report-builder:1.9.3", "state": {"waiting": {"reason": "ContainerCreating"}}, "resources": {"limits": {"memory": "2Gi"}}}],
+      "conditions": {"Ready": "False"}
+    }
+  ],
+  "logs": {
+    "report-builder-7c9b5d8f6-g5h6i": {"current": "03:15:00 INFO built daily-revenue report (12.4 MB)\n03:16:10 INFO built inventory-aging report (8.1 MB)", "previous": null},
+    "report-builder-7c9b5d8f6-a1b2c": {"current": null, "previous": null},
+    "report-builder-7c9b5d8f6-d3e4f": {"current": null, "previous": null},
+    "report-builder-7c9b5d8f6-j7k8l": {"current": null, "previous": null}
+  },
+  "events": [
+    {"type": "Warning", "reason": "Evicted", "object": "pod/report-builder-7c9b5d8f6-a1b2c", "message": "The node was low on resource: ephemeral-storage.", "count": 1, "last_seen": "2026-10-21T03:12:40Z"},
+    {"type": "Warning", "reason": "Evicted", "object": "pod/report-builder-7c9b5d8f6-d3e4f", "message": "The node was low on resource: ephemeral-storage.", "count": 1, "last_seen": "2026-10-21T03:17:05Z"},
+    {"type": "Warning", "reason": "EvictionThresholdMet", "namespace": "batch", "object": "node/ip-10-0-3-17", "message": "Attempting to reclaim ephemeral-storage", "count": 6, "last_seen": "2026-10-21T03:17:00Z"},
+    {"type": "Warning", "reason": "FreeDiskSpaceFailed", "namespace": "batch", "object": "node/ip-10-0-3-17", "message": "Failed to garbage collect required amount of images. Attempted to free 18.2 GB, but only found 1.1 GB eligible to free.", "count": 4, "last_seen": "2026-10-21T03:16:30Z"}
+  ],
+  "deployments": [
+    {
+      "name": "report-builder", "namespace": "batch", "replicas": 3, "ready": 1, "updated": 3,
+      "image": "registry.example.com/report-builder:1.9.3",
+      "history": [{"revision": 4, "image": "registry.example.com/report-builder:1.9.3", "change_cause": "add inventory-aging report", "rolled_out_at": "2026-10-02T12:00:00Z"}]
+    }
+  ],
+  "metrics": {
+    "node_disk_usage:ip-10-0-3-17": {"unit": "%", "points": [["02:00", 71], ["02:30", 79], ["03:00", 88], ["03:15", 93.2]]},
+    "node_disk_usage:ip-10-0-2-31": {"unit": "%", "points": [["02:00", 42], ["03:15", 44]]},
+    "restarts:report-builder": {"unit": "count", "points": [["02:00", 0], ["03:15", 0]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-3-17", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "True", "PIDPressure": "False"}, "allocatable": {"cpu": "8", "memory": "31Gi", "ephemeral-storage": "95Gi"}, "taints": ["node.kubernetes.io/disk-pressure:NoSchedule"], "notes": "/var/log/containers holds 61 GiB from a debug-level DaemonSet (log-shipper) since 01:40"},
+    {"name": "ip-10-0-2-31", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi", "ephemeral-storage": "95Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [{"action": "cordon_node", "target": "ip-10-0-3-17"}],
+    "after": {
+      "summary": "ip-10-0-3-17 is cordoned; report-builder pods rescheduled onto healthy nodes and are running.",
+      "checks": ["3/3 report-builder replicas ready on ip-10-0-2-31 and ip-10-0-1-12", "no new Evicted events in 10m"]
+    },
+    "wrong_fix": "Pods keep landing on ip-10-0-3-17 and getting evicted for low ephemeral-storage."
+  },
+  "ground_truth": {
+    "category": "NodePressure",
+    "root_cause": "Node ip-10-0-3-17 is at 93% disk usage (DiskPressure=True) because a debug-level log-shipper DaemonSet has written 61 GiB of container logs, so the kubelet keeps evicting pods there.",
+    "action": "cordon_node"
+  }
+}

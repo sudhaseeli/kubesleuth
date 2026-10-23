@@ -1,0 +1,68 @@
+# Least-privilege access for KubeSleuth.
+#
+# kubesleuth-reader is all the agent needs to investigate: it can read pods,
+# logs, events, deployments, replica sets and nodes, and nothing else. It cannot
+# read Secrets or ConfigMaps, so credentials never reach the model.
+#
+# kubesleuth-remediator is optional and namespaced. Bind it only in namespaces
+# where approved fixes may be applied, and run the agent with --allow-writes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubesleuth
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubesleuth
+  namespace: kubesleuth
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubesleuth-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubesleuth-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubesleuth-reader
+subjects:
+  - kind: ServiceAccount
+    name: kubesleuth
+    namespace: kubesleuth
+---
+# Optional: allow approved remediations in one namespace (here: shop).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubesleuth-remediator
+  namespace: shop
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubesleuth-remediator
+  namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubesleuth-remediator
+subjects:
+  - kind: ServiceAccount
+    name: kubesleuth
+    namespace: kubesleuth

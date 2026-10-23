@@ -1,0 +1,84 @@
+{
+  "id": "bad-rollout-5xx",
+  "title": "search-api error rate jumped to 18% but every pod looks healthy",
+  "alert": {
+    "name": "HighHTTP5xxRate",
+    "severity": "critical",
+    "namespace": "api",
+    "target": "deployment/search-api",
+    "fired_at": "2026-10-21T10:51:00Z",
+    "summary": "5xx rate for search-api is 18.2% (SLO: < 1%) for the last 8 minutes."
+  },
+  "pods": [
+    {
+      "name": "search-api-5f6c8d9b7-4hjkl", "namespace": "api", "owner": "deployment/search-api",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-1-12",
+      "containers": [{"name": "search-api", "image": "registry.example.com/search-api:9.4.0", "state": {"running": {"started_at": "2026-10-21T10:42:30Z"}}, "env": {"RANKING_TIMEOUT_MS": "200", "RANKING_URL": "http://ranking-svc.api:8080"}, "resources": {"limits": {"memory": "1Gi"}}}],
+      "conditions": {"Ready": "True"}
+    },
+    {
+      "name": "search-api-5f6c8d9b7-p9w2e", "namespace": "api", "owner": "deployment/search-api",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-2-31",
+      "containers": [{"name": "search-api", "image": "registry.example.com/search-api:9.4.0", "state": {"running": {"started_at": "2026-10-21T10:42:44Z"}}, "env": {"RANKING_TIMEOUT_MS": "200", "RANKING_URL": "http://ranking-svc.api:8080"}, "resources": {"limits": {"memory": "1Gi"}}}],
+      "conditions": {"Ready": "True"}
+    },
+    {
+      "name": "ranking-svc-7b8c9d6f5-m3n4b", "namespace": "api", "owner": "deployment/ranking-svc",
+      "phase": "Running", "ready": "1/1", "restarts": 0, "node": "ip-10-0-3-44",
+      "containers": [{"name": "ranking-svc", "image": "registry.example.com/ranking-svc:3.1.2", "state": {"running": {"started_at": "2026-10-15T09:00:00Z"}}, "resources": {"limits": {"memory": "2Gi"}}}],
+      "conditions": {"Ready": "True"}
+    }
+  ],
+  "logs": {
+    "search-api-5f6c8d9b7-4hjkl": {
+      "current": "10:50:01 INFO  GET /search?q=running+shoes 200 182ms\n10:50:01 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)\n10:50:01 WARN  GET /search?q=rain+jacket 502 203ms\n10:50:02 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)\n10:50:02 WARN  GET /search?q=tent 502 201ms\n10:50:02 INFO  GET /search?q=socks 200 96ms",
+      "previous": null
+    },
+    "search-api-5f6c8d9b7-p9w2e": {
+      "current": "10:50:04 ERROR upstream timeout calling ranking-svc after 200ms (attempt 1/1)\n10:50:04 WARN  GET /search?q=backpack 502 204ms\n10:50:05 INFO  GET /search?q=hat 200 141ms",
+      "previous": null
+    },
+    "ranking-svc-7b8c9d6f5-m3n4b": {
+      "current": "10:50:01 INFO  rank 120 candidates in 236ms\n10:50:02 INFO  rank 80 candidates in 171ms\n10:50:02 INFO  rank 150 candidates in 268ms",
+      "previous": null
+    }
+  },
+  "events": [
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/search-api", "message": "Scaled up replica set search-api-5f6c8d9b7 to 2", "count": 1, "last_seen": "2026-10-21T10:42:30Z"},
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/search-api", "message": "Scaled down replica set search-api-69d7c4b8f to 0", "count": 1, "last_seen": "2026-10-21T10:43:10Z"}
+  ],
+  "deployments": [
+    {
+      "name": "search-api", "namespace": "api", "replicas": 2, "ready": 2, "updated": 2,
+      "image": "registry.example.com/search-api:9.4.0",
+      "history": [
+        {"revision": 21, "image": "registry.example.com/search-api:9.3.2", "change_cause": "RANKING_TIMEOUT_MS=2000, retries=2", "rolled_out_at": "2026-10-09T13:00:00Z"},
+        {"revision": 22, "image": "registry.example.com/search-api:9.4.0", "change_cause": "fail fast: RANKING_TIMEOUT_MS=200, retries=0", "rolled_out_at": "2026-10-21T10:42:30Z"}
+      ]
+    },
+    {"name": "ranking-svc", "namespace": "api", "replicas": 1, "ready": 1, "updated": 1, "image": "registry.example.com/ranking-svc:3.1.2", "history": [{"revision": 11, "image": "registry.example.com/ranking-svc:3.1.2", "change_cause": "model refresh", "rolled_out_at": "2026-10-15T09:00:00Z"}]}
+  ],
+  "metrics": {
+    "http_5xx_rate:search-api": {"unit": "%", "points": [["10:20", 0.3], ["10:30", 0.4], ["10:40", 0.4], ["10:43", 12.6], ["10:46", 17.9], ["10:50", 18.2]]},
+    "http_p99_latency:search-api": {"unit": "ms", "points": [["10:20", 410], ["10:40", 420], ["10:43", 205], ["10:50", 204]]},
+    "http_p99_latency:ranking-svc": {"unit": "ms", "points": [["10:20", 290], ["10:40", 300], ["10:50", 296]]},
+    "restarts:search-api": {"unit": "count", "points": [["10:20", 0], ["10:50", 0]]},
+    "cpu_usage:search-api": {"unit": "cores", "points": [["10:20", 0.9], ["10:50", 0.7]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-1-12", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [{"action": "rollback_deployment", "target": "search-api"}],
+    "after": {
+      "summary": "Error rate dropped back under the SLO within 3 minutes of rolling back to revision 21.",
+      "checks": ["http_5xx_rate:search-api 0.4%", "no 'upstream timeout' errors in the last 5m"]
+    },
+    "wrong_fix": "5xx rate is still ~18%: requests to ranking-svc keep timing out at 200ms."
+  },
+  "ground_truth": {
+    "category": "BadRollout",
+    "root_cause": "Revision 22 cut the ranking-svc timeout from 2000ms to 200ms with no retries, but ranking-svc's p99 is ~300ms, so about 1 in 5 searches times out and returns 502.",
+    "action": "rollback_deployment"
+  }
+}

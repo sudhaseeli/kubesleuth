@@ -1,0 +1,78 @@
+{
+  "id": "readiness-probe",
+  "title": "session-svc pods are running but never become ready",
+  "alert": {
+    "name": "KubeDeploymentReplicasMismatch",
+    "severity": "critical",
+    "namespace": "auth",
+    "target": "deployment/session-svc",
+    "fired_at": "2026-10-21T12:33:00Z",
+    "summary": "Deployment auth/session-svc has 0 of 3 replicas ready; logins are failing."
+  },
+  "pods": [
+    {
+      "name": "session-svc-9d8c7b6a5-r2d2x", "namespace": "auth", "owner": "deployment/session-svc",
+      "phase": "Running", "ready": "0/1", "restarts": 0, "node": "ip-10-0-1-12",
+      "containers": [{"name": "session-svc", "image": "registry.example.com/session-svc:5.0.1", "state": {"running": {"started_at": "2026-10-21T12:21:10Z"}}, "readiness_probe": {"http_get": "/health/ready", "port": 8080, "period_seconds": 5, "failure_threshold": 3}, "resources": {"limits": {"memory": "256Mi"}}}],
+      "conditions": {"Ready": "False", "ContainersReady": "False"}
+    },
+    {
+      "name": "session-svc-9d8c7b6a5-c3p0z", "namespace": "auth", "owner": "deployment/session-svc",
+      "phase": "Running", "ready": "0/1", "restarts": 0, "node": "ip-10-0-2-31",
+      "containers": [{"name": "session-svc", "image": "registry.example.com/session-svc:5.0.1", "state": {"running": {"started_at": "2026-10-21T12:21:15Z"}}, "readiness_probe": {"http_get": "/health/ready", "port": 8080, "period_seconds": 5, "failure_threshold": 3}, "resources": {"limits": {"memory": "256Mi"}}}],
+      "conditions": {"Ready": "False", "ContainersReady": "False"}
+    },
+    {
+      "name": "session-svc-9d8c7b6a5-bb8yy", "namespace": "auth", "owner": "deployment/session-svc",
+      "phase": "Running", "ready": "0/1", "restarts": 0, "node": "ip-10-0-3-44",
+      "containers": [{"name": "session-svc", "image": "registry.example.com/session-svc:5.0.1", "state": {"running": {"started_at": "2026-10-21T12:21:21Z"}}, "readiness_probe": {"http_get": "/health/ready", "port": 8080, "period_seconds": 5, "failure_threshold": 3}, "resources": {"limits": {"memory": "256Mi"}}}],
+      "conditions": {"Ready": "False", "ContainersReady": "False"}
+    }
+  ],
+  "logs": {
+    "session-svc-9d8c7b6a5-r2d2x": {
+      "current": "12:21:11 INFO  session-svc 5.0.1 listening on :8080\n12:21:11 INFO  redis connected (sessions db 3)\n12:32:50 INFO  GET /healthz 200 1ms\n12:32:51 WARN  GET /health/ready 404 0ms (no route)\n12:32:56 WARN  GET /health/ready 404 0ms (no route)\n12:33:01 WARN  GET /health/ready 404 0ms (no route)",
+      "previous": null
+    },
+    "session-svc-9d8c7b6a5-c3p0z": {"current": "12:32:57 WARN  GET /health/ready 404 0ms (no route)", "previous": null},
+    "session-svc-9d8c7b6a5-bb8yy": {"current": "12:32:58 WARN  GET /health/ready 404 0ms (no route)", "previous": null}
+  },
+  "events": [
+    {"type": "Warning", "reason": "Unhealthy", "object": "pod/session-svc-9d8c7b6a5-r2d2x", "message": "Readiness probe failed: HTTP probe failed with statuscode: 404", "count": 141, "last_seen": "2026-10-21T12:33:01Z"},
+    {"type": "Warning", "reason": "Unhealthy", "object": "pod/session-svc-9d8c7b6a5-c3p0z", "message": "Readiness probe failed: HTTP probe failed with statuscode: 404", "count": 140, "last_seen": "2026-10-21T12:32:57Z"},
+    {"type": "Warning", "reason": "Unhealthy", "object": "pod/session-svc-9d8c7b6a5-bb8yy", "message": "Readiness probe failed: HTTP probe failed with statuscode: 404", "count": 139, "last_seen": "2026-10-21T12:32:58Z"},
+    {"type": "Normal", "reason": "ScalingReplicaSet", "object": "deployment/session-svc", "message": "Scaled down replica set session-svc-6a5b4c3d2 to 0", "count": 1, "last_seen": "2026-10-21T12:22:40Z"}
+  ],
+  "deployments": [
+    {
+      "name": "session-svc", "namespace": "auth", "replicas": 3, "ready": 0, "updated": 3,
+      "image": "registry.example.com/session-svc:5.0.1",
+      "strategy": "RollingUpdate maxUnavailable=100%",
+      "history": [
+        {"revision": 4, "image": "registry.example.com/session-svc:5.0.1", "change_cause": "redis TLS", "rolled_out_at": "2026-10-11T09:00:00Z"},
+        {"revision": 5, "image": "registry.example.com/session-svc:5.0.1", "change_cause": "standardise probes: readiness path /healthz -> /health/ready", "rolled_out_at": "2026-10-21T12:21:00Z"}
+      ]
+    }
+  ],
+  "metrics": {
+    "http_5xx_rate:session-svc": {"unit": "%", "points": [["12:00", 0.1], ["12:20", 0.1], ["12:23", 100], ["12:33", 100]]},
+    "restarts:session-svc": {"unit": "count", "points": [["12:00", 0], ["12:33", 0]]},
+    "memory_working_set:session-svc": {"unit": "MiB", "points": [["12:00", 88], ["12:33", 61]]}
+  },
+  "nodes": [
+    {"name": "ip-10-0-1-12", "conditions": {"Ready": "True", "MemoryPressure": "False", "DiskPressure": "False", "PIDPressure": "False"}, "allocatable": {"cpu": "4", "memory": "15Gi"}, "taints": []}
+  ],
+  "resolution": {
+    "accepts": [{"action": "rollback_deployment", "target": "session-svc"}],
+    "after": {
+      "summary": "Rolled back to revision 4; readiness probes on /healthz pass and all 3 replicas are ready.",
+      "checks": ["3/3 replicas ready", "logins succeeding: 5xx rate 0.1%"]
+    },
+    "wrong_fix": "Pods restart but still fail readiness: /health/ready returns 404."
+  },
+  "ground_truth": {
+    "category": "ProbeFailure",
+    "root_cause": "Revision 5 moved the readiness probe to /health/ready, an endpoint session-svc does not serve (it returns 404), so no pod ever becomes ready and the service has no endpoints.",
+    "action": "rollback_deployment"
+  }
+}
